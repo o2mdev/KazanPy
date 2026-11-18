@@ -385,6 +385,7 @@ class KazanViewer(QMainWindow):
         finally:
             pts = self._ginput['points']
             self._ginput = None
+            self._message_until = 0.0   # the selection prompt is done
             self.plot.unsetCursor()
         return np.array(pts, dtype=float).reshape(-1, 2)
 
@@ -498,8 +499,21 @@ class KazanViewer(QMainWindow):
         sets = []
         for i, o in enumerate(self.out):
             d, _ = process(o.copy())
-            sets.append((d, o.ax.get('Color') or COLOR_ORDER[i % len(COLOR_ORDER)]))
+            c = o.ax.get('Color')
+            if c is None or (isinstance(c, str) and not c):
+                c = COLOR_ORDER[i % len(COLOR_ORDER)]
+            sets.append((d, c))
         return sets
+
+    @staticmethod
+    def _style(d: KzData) -> dict:
+        """Line style fields of a data set (MATLAB SuperPlot)."""
+        lw = d.ax.get('LineWidth', 1)
+        try:
+            lw = float(lw)
+        except (TypeError, ValueError):
+            lw = 1.0
+        return dict(width=lw, style=d.ax.get('LineStyle') or '-', marker=d.ax.get('Marker') or 'none')
 
     def _part(self, y):
         if self.view.part == 'magn':
@@ -530,14 +544,14 @@ class KazanViewer(QMainWindow):
                 if self.view.plot_type == 'Stack' and d.is_2d:
                     step = np.nanmax(np.abs(re)) or 1.0
                     for k in range(re.shape[1]):
-                        p.line(p.real, d.ax.x, re[:, k] + k * step, color)
+                        p.line(p.real, d.ax.x, re[:, k] + k * step, color, **self._style(d))
                         if im is not None:
-                            p.line(p.imag, d.ax.x, im[:, k] + k * step, color)
+                            p.line(p.imag, d.ax.x, im[:, k] + k * step, color, **self._style(d))
                 else:
                     k = min(self.view.position, re.shape[1] - 1)
-                    p.line(p.real, d.ax.x, re[:, k], color)
+                    p.line(p.real, d.ax.x, re[:, k], color, **self._style(d))
                     if im is not None:
-                        p.line(p.imag, d.ax.x, im[:, k], color)
+                        p.line(p.imag, d.ax.x, im[:, k], color, **self._style(d))
             ylabel = ref.ax.get('unit') or 'a.u.'
         p.set_labels(ref.ax.xlabel, ylabel)
 

@@ -18,6 +18,10 @@ MATLAB_COLORS = {
     'm': (255, 0, 255), 'y': (255, 255, 0), 'k': (0, 0, 0), 'w': (255, 255, 255),
 }
 COLOR_ORDER = ['b', 'g', 'r', 'c', 'm', 'y', 'k']  # classic MATLAB plot order
+_LINESTYLE = {'-': Qt.PenStyle.SolidLine, '--': Qt.PenStyle.DashLine, ':': Qt.PenStyle.DotLine,
+              '-.': Qt.PenStyle.DashDotLine}
+_MARKER = {'o': 'o', '+': '+', '*': 'star', '.': 'o', 'x': 'x', 's': 's', 'square': 's',
+           'd': 'd', 'diamond': 'd', '^': 't1', 'v': 't', '>': 't2', '<': 't3', 'p': 'p', 'h': 'h'}
 
 
 def to_qcolor(c, default='b') -> QColor:
@@ -110,8 +114,15 @@ class KazanPlot(pg.GraphicsLayoutWidget):
 
     # ------------------------------------------------------------------ drawing
     @staticmethod
-    def line(p: pg.PlotItem, x, y, color='b', width=1.0):
-        p.plot(np.asarray(x), np.asarray(y), pen=pg.mkPen(to_qcolor(color), width=width))
+    def line(p: pg.PlotItem, x, y, color='b', width=1.0, style='-', marker='none'):
+        """MATLAB plot(x, y, 'Color', c, 'LineStyle', style, 'LineWidth', w, 'Marker', m)."""
+        c = to_qcolor(color)
+        pen = None if style == 'none' else pg.mkPen(c, width=float(width), style=_LINESTYLE.get(style, Qt.PenStyle.SolidLine))
+        symbol = _MARKER.get(marker)
+        kw = {}
+        if symbol:
+            kw = dict(symbol=symbol, symbolPen=pg.mkPen(c), symbolBrush=None, symbolSize=6)
+        p.plot(np.asarray(x), np.asarray(y), pen=pen, **kw)
 
     @staticmethod
     def density(p: pg.PlotItem, x, y, z):

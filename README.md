@@ -75,7 +75,11 @@ out-of-process (TCP) bridge can be added later without changing plugins.
 Done: main window layout, directory browser, Source/Output/transfer, Real/Re-Im/Magn,
 1D/Stack/Contour/Density, slice slider, parameter row (data parameters), zoom/measure/axis
 buttons, processing context menu (M.aver., Sav.gol., Integrate), font, grid, favorites
-(plugins and directories), Symmetrize plugin.
+(plugins and directories), trace styles (Color/LineStyle/LineWidth/Marker as in SuperPlot).
+
+Plugins: SYMMETRIZE, CWPLUGIN3 (baseline/phase/filter, absorption-derivative-integral,
+integral, LW-L/G/V fits, LWhh, LWpp). Shared math in `kazan/math/` (EasySpin-convention
+line shapes, `kv_autofit` port).
 
 Loaders: ASCII; SpecMan `.tdms` (`kazan/io/specman.py`, also reads interleaved TDMS);
 SpecMan `.d01`/`.exp` with `.bip` sidecar; Bruker XEPR `.DSC`/`.DTA` and ESP/WinEPR
@@ -90,4 +94,5 @@ scan count of 0 leaves the data unscaled; `to`/`step` are not taken as units.
 
 Not ported yet: RC filter, pseudo-modulation, loaders other than those above (ASCII2D,
 RMN, NIST, SpecManFLD/RAW, ...), loader options, parameter locking, X/Y axis
-representation menus, ESP pulse (JSS 32) axes, the other 12 plugins.
+representation menus, ESP pulse (JSS 32) axes, the other 11 plugins, CWPLUGIN3 LW-Md
+(unfinished in MATLAB).
