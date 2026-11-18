@@ -1,0 +1,135 @@
+"""Plugin contract between the Kazan viewer (host) and its plugins.
+
+This is the Python counterpart of the MATLAB calls ``app.KazanViewer.GetData`` /
+``SetData`` / ``Get`` / ``Set`` / ``Ginput`` / ``MakePlugins('close', app)`` and of
+the plugin's ``FileUpdate`` method.
+
+Rule: the host API passes only plain data (numpy arrays, :class:`KzData`, strings,
+numbers) - never Qt objects. That keeps a later out-of-process (TCP) bridge possible
+without changing any plugin.
+"""
+from __future__ import annotations
+
+import importlib.util
+import sys
+import traceback
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Union
+
+import numpy as np
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMainWindow
+
+if TYPE_CHECKING:
+    from PySide6.QtCore import SignalInstance
+
+    from .data import KzData
+
+GetMode = Literal['source', 'psource', 'output']
+SetMode = Literal['source', 'output']
+GetKey = Literal['font', 'slice']
+SetKey = Literal['font', 'slice', 'cursor', 'message', 'log', 'log_clear', 'log_all']
+
+
+class KazanHost(Protocol):
+    """Everything a plugin may use from the viewer."""
+
+    #: emitted after a new source is loaded or set (MATLAB: plugin FileUpdate)
+    sourceChanged: SignalInstance
+    #: emitted with the new 0-based slice index
+    sliceChanged: SignalInstance
+
+    def get_data(self, mode: GetMode) -> Union[KzData, list[KzData]]:
+        """'source' raw data, 'psource' processed (filter/diff), 'output' list.
+
+        Always returns copies.
+        """
+
+    def set_data(self, mode: SetMode, data: Union[KzData, list[KzData]]) -> None:
+        """'output': show a list of data sets; 'source': replace the source."""
+
+    def get(self, key: GetKey) -> Any:
+        """'font' point size; 'slice' current 0-based slice (MATLAB was 1-based)."""
+
+    def set(self, key: SetKey, value: Any = None) -> None:
+        """'message' / 'cursor' plot title, 'log' / 'log_all' / 'log_clear' results
+        box, 'slice' select slice, 'font' point size."""
+
+    def ginput(self, n: int) -> np.ndarray:
+        """Blocking pick of ``n`` points on the viewer plot; returns ``(k, 2)``,
+        ``k < n`` if the user cancels with right-click or Esc."""
+
+    def plugin_closed(self, plugin: KazanPlugin) -> None:
+        """Called by the plugin when it closes (MATLAB ``MakePlugins('close', app)``)."""
+
+
+class KazanPlugin(QMainWindow):
+    """Base class of all plugins (one window per running instance).
+
+    Subclass, build the UI in ``__init__`` (after ``super().__init__``), override
+    :meth:`file_update` if the plugin should react to a newly loaded file.
+    Windows are independent top-level windows, as in MATLAB.
+    """
+
+    #: label in the Plugins menu; defaults to the file name in upper case
+    menu_name: str = ''
+
+    def __init__(self, host: KazanHost, guid: str):
+        super().__init__()
+        self.host = host
+        self.guid = guid
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        if self.menu_name:
+            self.setWindowTitle(self.menu_name)
+        # Disconnected automatically by Qt when the window is destroyed.
+        host.sourceChanged.connect(self.file_update)
+
+    def file_update(self) -> None:
+        """Called when a new source is loaded (MATLAB ``FileUpdate``)."""
+
+    def closeEvent(self, event):
+        self.host.plugin_closed(self)
+        super().closeEvent(event)
+
+
+@dataclass
+class PluginInfo:
+    name: str            # MATLAB-style key, also the ini section name (e.g. 'SYMMETRIZE')
+    label: str           # menu label
+    cls: type
+    path: Path
+
+
+def discover_plugins(folder: Path) -> tuple[list[PluginInfo], list[str]]:
+    """Import every ``*.py`` in ``folder`` and collect :class:`KazanPlugin` subclasses.
+
+    A plugin that fails to import is reported in the error list and skipped, so it
+    cannot take the viewer down. Calling this again re-imports the files (reload).
+    """
+    found: list[PluginInfo] = []
+    errors: list[str] = []
+    folder = Path(folder)
+    if not folder.is_dir():
+        return found, [f'Plugin folder not found: {folder}']
+
+    for f in sorted(folder.glob('*.py'), key=lambda p: p.name.lower()):
+        if f.name.startswith('_'):
+            continue
+        mod_name = f'kazan_plugins.{f.stem}'
+        try:
+            spec = importlib.util.spec_from_file_location(mod_name, f)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = module
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(mod_name, None)
+            errors.append(f'{f.name}: {traceback.format_exc(limit=3)}')
+            continue
+        classes = [c for c in vars(module).values()
+                   if isinstance(c, type) and issubclass(c, KazanPlugin)
+                   and c is not KazanPlugin and c.__module__ == mod_name]
+        for c in classes:
+            name = (c.__name__ if len(classes) > 1 else f.stem).upper()
+            found.append(PluginInfo(name=name, label=c.menu_name or name, cls=c, path=f))
+    return found, errors
