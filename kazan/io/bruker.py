@@ -78,7 +78,8 @@ def _axis(par: Struct, letter: str) -> tuple[np.ndarray, str]:
             sf, w = _num(par, f'{L}MIN'), _num(par, f'{L}WID')
             step = w / (dim - 1)
             label = f"{par.get(f'{L}NAM', '?')}, {unit}"
-        # JSS 32 (ESP pulse) is not ported: falls back to point numbers
+        elif jss == 32 and L != 'Y':
+            dim, sf, step, label = _jss32_axis(par, L)
     elif 'JEX' in par:
         if L != 'Y':
             dim = int(_num(par, 'RES', '1024'))
@@ -94,6 +95,53 @@ def _axis(par: Struct, letter: str) -> tuple[np.ndarray, str]:
         if f'{L}AxisQuant' in par:
             label = f"{par[f'{L}AxisQuant']}, {unit}"
     return sf + step * np.arange(dim), label
+
+
+def _numbers(value) -> list[float]:
+    out = []
+    for v in str(value).replace(',', ' ').split():
+        try:
+            out.append(float(v))
+        except ValueError:
+            pass
+    return out
+
+
+def _jss32_axis(par: Struct, L: str):
+    """ESP pulse (JSS 32) axis of ``getrespar321``: the quantity in ``<L>QNT`` (Time,
+    Magn.Field, RF1/RF2, 1.RFSource), else field (GST/GSI) or time from ``XPD9``."""
+    dim = int(_num(par, f'{L}PLS', '1'))
+    sf, step, label = 0.0, 1.0, '?'
+    qnt = str(par.get(f'{L}QNT', '')).replace("'", '').strip()
+    if qnt == 'Time':
+        val = _numbers(par.get('Psd5', ''))              # detection channel table, ns
+        pos = [v for v in val[68:75] if v > 0]
+        step, label = (pos[0] if pos else 1.0), 'Time, ns'
+    elif qnt == 'Magn.Field':
+        if 'HCF' in par:
+            cf = _num(par, 'HCF')
+            wd = _num(par, 'HSW') if 'HSW' in par else abs(cf - _num(par, 'GST')) * 2
+        else:
+            wd = _num(par, 'GSI')
+            cf = _num(par, 'GST') + wd / 2
+        step, sf, label = wd / (dim - 1), cf - wd / 2, 'Magnetic Field, G'
+    elif qnt in ('RF1', 'RF2'):
+        sf = (_numbers(par.get(f'{qnt}StartFreq', '0')) or [0.0])[0]
+        wd = (_numbers(par.get(f'{qnt}SweepWidth', '0')) or [0.0])[0]
+        step, label = wd / (dim - 1), f'{qnt}, MHz'
+    elif qnt == '1.RFSource':
+        sf, wd = _num(par, 'ESF'), _num(par, 'ESW')
+        step, label = wd / (dim - 1), 'RF, MHz'
+    elif qnt:
+        pass
+    elif 'GST' in par:
+        sf, wd = _num(par, 'GST'), _num(par, 'GSI')
+        step = wd / (dim - 1)
+        label = f"?, {str(par.get('JUN', 'a.u.')).replace(chr(39), '')}"
+    else:
+        val = _numbers(par.get('XPD9', ''))
+        step, label = (val[5] * 8 if len(val) > 5 else 1.0), 'Time, ns'
+    return dim, sf, step, label
 
 
 def brukerread(filename):
@@ -183,11 +231,8 @@ def _jss_axis(par: Struct) -> Struct:
             res.x = center - width / 2 + width / (dim - 1) * np.arange(dim)
             res.xlabel = 'Magnetic field, Gs'
         elif jss == 32:
-            dim = int(_num(par, 'XPLS'))
-            val = [float(v) for v in str(par.get('XPD9', '')).replace(',', ' ').split()]
-            step = val[5] * 8 if len(val) > 5 else 1.0
-            res.x = step * np.arange(dim)
-            res.xlabel = 'Time, ns'
+            dim, sf, step, res.xlabel = _jss32_axis(par, 'X')
+            res.x = sf + step * np.arange(dim)
         else:
             key = next((k for k in ('RES', 'FRES', 'XPLS') if k in par), None)
             dim = int(_num(par, key)) if key else 1024

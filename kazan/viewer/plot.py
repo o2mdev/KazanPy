@@ -125,15 +125,17 @@ class KazanPlot(pg.GraphicsLayoutWidget):
         p.plot(np.asarray(x), np.asarray(y), pen=pen, **kw)
 
     @staticmethod
-    def density(p: pg.PlotItem, x, y, z):
+    def density(p: pg.PlotItem, x, y, z, clim=None):
         img = pg.ImageItem(np.asarray(z, dtype=float))
+        if clim is not None and clim[1] > clim[0]:
+            img.setLevels(clim)
         x0, x1, y0, y1 = float(x[0]), float(x[-1]), float(y[0]), float(y[-1])
         img.setRect(QRectF(x0, y0, (x1 - x0) or 1.0, (y1 - y0) or 1.0))
         img.setColorMap(pg.colormap.get('viridis'))
         p.addItem(img)
 
     @staticmethod
-    def contour(p: pg.PlotItem, x, y, z, nlevels: int = 10):
+    def contour(p: pg.PlotItem, x, y, z, nlevels: int = 10, levels=None):
         z = np.asarray(z, dtype=float)
         nx, ny = z.shape
         tr = QTransform()
@@ -142,7 +144,10 @@ class KazanPlot(pg.GraphicsLayoutWidget):
                  (float(y[-1]) - float(y[0])) / max(ny - 1, 1) or 1.0)
         cmap = pg.colormap.get('viridis')
         zmin, zmax = np.nanmin(z), np.nanmax(z)
-        for i, level in enumerate(np.linspace(zmin, zmax, nlevels + 2)[1:-1]):
+        if levels is None:
+            levels = np.linspace(zmin, zmax, nlevels + 2)[1:-1]
+        nlevels = max(len(levels), 1)
+        for i, level in enumerate(levels):
             c = cmap.map((i + 0.5) / nlevels, mode='qcolor')
             iso = pg.IsocurveItem(data=z, level=level, pen=pg.mkPen(c))
             iso.setTransform(tr)

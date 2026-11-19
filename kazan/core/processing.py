@@ -1,13 +1,15 @@
 """Display processing: port of ``kazan3.Process`` (ax.filt, ax.diff, ax.s).
 
-Ported: mvgaver (binomial), savgol, integrate, shift.
-Not yet ported (data passes through unchanged, a warning is returned): rc, psmod.
+Filters (ax.filt): rc, mvgaver (binomial), savgol; derivative (ax.diff): psmod
+(pseudo-modulation), integrate; shift ax.s. EasySpin's ``rcfilt`` and ``fieldmod``
+are re-implemented here (the EasySpin copies are p-coded).
 """
 from __future__ import annotations
 
 import numpy as np
 from scipy.ndimage import convolve1d
-from scipy.signal import savgol_filter
+from scipy.signal import lfilter, savgol_filter
+from scipy.special import jv
 
 from .data import KzData
 
@@ -31,6 +33,29 @@ def _dims(d: KzData) -> tuple[bool, bool]:
     if fpar == 'auto':
         return True, d.y.shape[1] > 5
     return '1D' in fpar or fpar == 'both', '2D' in fpar or fpar == 'both'
+
+
+def rcfilt(y: np.ndarray, samp_time: float, time_const: float) -> np.ndarray:
+    """EasySpin ``rcfilt``: RC low-pass filter along the first dimension,
+    ``y_k = e y_(k-1) + (1-e) x_k`` with ``e = exp(-samp_time / time_const)``."""
+    if time_const <= 0:
+        return y
+    e = np.exp(-samp_time / time_const)
+    return _per_part(lambda a: lfilter([1 - e], [1, -e], a, axis=0), y)
+
+
+def fieldmod(x: np.ndarray, y: np.ndarray, mod_ampl: float, harmonic: int = 1) -> np.ndarray:
+    """EasySpin ``fieldmod``: pseudo-modulation of an absorption spectrum with
+    peak-to-peak amplitude ``mod_ampl`` (x units); ``harmonic`` of the lock-in signal.
+    Small amplitudes give the derivative times ``mod_ampl / 2``."""
+    y = np.asarray(y, float)
+    n = len(y)
+    if n < 2 or mod_ampl <= 0:
+        return y
+    dx = x[1] - x[0]
+    f = np.fft.fftfreq(2 * n, dx)                       # zero-padded, 1/x units
+    s = 2 * (1j) ** harmonic * jv(harmonic, 2 * np.pi * (mod_ampl / 2) * f)
+    return np.real(np.fft.ifft(np.fft.fft(y, 2 * n) * s))[:n]
 
 
 def process(d: KzData) -> tuple[KzData, list[str]]:
@@ -58,7 +83,7 @@ def process(d: KzData) -> tuple[KzData, list[str]]:
         if fy and y.shape[1] > win:
             y = _per_part(lambda a: savgol_filter(a, win, min(pol, win - 1), axis=1), y)
     elif filt == 'rc':
-        warnings.append('RC filter is not ported yet')
+        y = rcfilt(y, 1, float(d.ax.get('tc', 5)))
 
     diff = d.ax.get('diff') or 'normal'
     if diff == 'integrate':
@@ -66,7 +91,11 @@ def process(d: KzData) -> tuple[KzData, list[str]]:
         dx = (x[1] - x[0]) if len(x) > 1 else 1.0
         y = np.cumsum(y - y.mean(axis=0, keepdims=True), axis=0) * dx / 2
     elif diff == 'psmod':
-        warnings.append('Pseudo-modulation is not ported yet')
+        amp = float(d.ax.get('ps_mod', 5) or 0)
+        bl = np.concatenate([y[:4], y[-4:]]).sum(axis=0) / 8
+        pts = np.arange(1.0, y.shape[0] + 1)
+        y = np.column_stack([fieldmod(pts, np.real(y[:, k] - bl[k]), amp)
+                             for k in range(y.shape[1])])
 
     d.y = y + float(d.ax.get('s', 0) or 0)
     d.ax.filt = ''

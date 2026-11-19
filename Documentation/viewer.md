@@ -35,16 +35,53 @@ so you can chain processing steps.
 
 Toggle buttons that are "on" are shown in kazan3's orange.
 
-The parameter row under the plot shows data parameters. **=** sets the selected value.
+## Parameters
+
+The parameter row under the plot shows one parameter at a time: pick it in the list,
+type a value, press Enter or **=**.
+
+* **View parameters** are kept from file to file, and follow a file that has them:
+  * `xlabel`, `ylabel`
+  * `Color`, `LineStyle`, `LineWidth`, `Marker`
+  * `dx` - X axis correction
+  * `s` - Y shift
+  * `ps_mod` - pseudo-modulation amplitude, points
+  * `tc` - filter time constant, points
+  * `contour` - contour levels as fractions of the maximum, e.g. `.2:.1:.6`
+  * `yslicelabel`
+* **Data parameters** are read from each file: title, sample, comment, formula, `freq1`
+  (EPR frequency), `reference`, `cf`, units.
+
+**Locking**: right-click the parameter list or the value field and choose *Lock*. A
+locked parameter keeps its value when another file is loaded. It is shown as `* name`
+with a yellow value field. *Unlock all* releases all of them.
 
 ## Processing
 
-The processing context menu on the plot applies to the source as you view it (the
-"processed source" that plugins can ask for):
+The plot context menu (right-click) applies to the source, or to the first output trace
+when Output is shown:
 
-* Derivative: *Normal*, *Integrate*.
-* Filter: *Not Filtered*, *M.aver.* (moving average), *Sav.gol.* (Savitzky-Golay), with
-  *Apply to* *Auto* / *First Dim* / *Second Dim* / *Both* and the filter time constant.
+* **Derivative**:
+  * *Normal*
+  * *PS,mod* - pseudo-modulation: the first harmonic of a field modulation with
+    peak-to-peak amplitude `ps_mod` points
+  * *Integrate*
+* **Filter** (time constant `tc`, points):
+  * *Not Filtered*
+  * *RC* - RC low-pass
+  * *M.aver.* - moving average
+  * *Sav.gol.* - Savitzky-Golay
+
+  *Apply to* chooses the dimension: *Auto*, *First Dim*, *Second Dim* or *Both*.
+* **Axis representation**:
+  * *x-y* - both axes as they are.
+  * *X* - as is, points, reverse, log, g-factor (from `freq1`), ppm of `reference`, or
+    ppm - 1.
+  * *Y* - as is, points, reverse, log.
+
+  Log and reverse change how the plot axis is drawn. Points, g-factor and ppm change
+  the axis values; the g-factor axis is drawn reversed, as in Kazan3.
+* **Reload Data** loads the current file again.
 
 *Tools > Fix Source Processing* makes the processing permanent. *Tools > Cut Slice*
 takes the current slice as the new source. *Tools > Show Load Script* shows how the data

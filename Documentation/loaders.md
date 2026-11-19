@@ -10,8 +10,8 @@ Load Script*) records them.
 | ASCII | text columns | `kazan/io/ascii.py` | real files |
 | ASCII2D | one value per line, reshaped to 2D | `kazan/io/ascii.py` | synthetic file |
 | XEPR | Bruker `.DSC` / `.DTA`, ESP / WinEPR `.par` / `.spc` | `kazan/io/bruker.py` | real files |
-| XEPR_JSS | old ESP `.par` / `.spc` with JSS axes | `kazan/io/bruker.py` | synthetic file |
-| ASTASHKIN | `.par` + `.dat` | `kazan/io/other.py` | synthetic file |
+| XEPR_JSS | old ESP `.par` / `.spc` with JSS axes | `kazan/io/bruker.py` | synthetic files |
+| ASTASHKIN | `.par` + `.dat` | `kazan/io/other.py` | real files |
 | SpecMan | `.tdms`, `.d01` / `.exp` (+ `.bip`) | `kazan/io/specman.py` | real files |
 | SpecManNIST | `.d01` / `.exp`, NIST field-meter variant | `kazan/io/specman.py` | real file, no field meter |
 | SpecManFLD | `.d01` / `.exp`, measured field axis | `kazan/io/specman.py` | real file, no field meter |
@@ -80,6 +80,10 @@ Other formats:
 * **TecMag**: all records are read (MATLAB failed for more than one record).
 * **Spinsight**: dwell times like `2u` are read as 2 us, and the time axis is in
   seconds.
+* **ESP pulse (JSS 32) axes** (XEPR and XEPR_JSS): the `Psd5` / `XPD9` pulse tables are
+  read as number lists (MATLAB converted them with `str2double`, which gave NaN, so
+  the time axes failed), and the *Time* axis uses the step it finds (MATLAB stored it in
+  the wrong field).
 
 ## Not ported
 

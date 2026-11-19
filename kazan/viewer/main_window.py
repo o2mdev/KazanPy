@@ -5,7 +5,7 @@ import fnmatch
 import time
 import traceback
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +52,29 @@ class View:
     grid: bool = False
     default_font: int = 12
     font: int = 12
+    xtype: str = 'plot'          # 'plot' | 'pnt' | 'semilog' | 'reverse' | 'gspace' | 'ppm' | 'ppm-1'
+    ytype: str = 'plot'          # 'plot' | 'pnt' | 'semilog' | 'reverse'
+    par: dict = field(default_factory=dict)      # view parameter values (MATLAB View.Par)
+    locked: list = field(default_factory=list)   # parameters kept on file load (View.LockedPar)
+
+
+def matlab_vector(text, default=None) -> np.ndarray:
+    """Numbers of a MATLAB vector expression: '.2:.1:.6', '[.1 .3 .5]', '0.5'."""
+    try:
+        out = []
+        for part in str(text).strip().strip('[]').replace(',', ' ').split():
+            nums = [float(v) for v in part.split(':')]
+            if len(nums) == 1:
+                out.append(nums[0])
+            else:
+                a, st, b = (nums[0], 1.0, nums[1]) if len(nums) == 2 else nums
+                if st:
+                    out.extend(a + st * np.arange(int(np.floor((b - a) / st + 1e-9)) + 1))
+        if out:
+            return np.array(out)
+    except (ValueError, TypeError):
+        pass
+    return np.asarray(default if default is not None else [], float)
 
 
 class KazanViewer(QMainWindow):
@@ -171,6 +194,10 @@ class KazanViewer(QMainWindow):
         self.ddSelParameter.currentTextChanged.connect(self._on_parameter_selected)
         self.eParameter = QLineEdit()
         self.eParameter.returnPressed.connect(self._on_parameter_set)
+        for w in (self.ddSelParameter, self.eParameter):   # MATLAB ParMenu: lock parameters
+            w.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            w.customContextMenuRequested.connect(
+                lambda pos, w=w: self._parameter_menu(w.mapToGlobal(pos)))
         bEq = QPushButton('=')
         bEq.setFixedWidth(26)
         bEq.setToolTip('Set parameter value')
@@ -470,6 +497,8 @@ class KazanViewer(QMainWindow):
         title = self.src.ax.get('title') or ''
         name = self.src.filename or ''
         self.setWindowTitle(f'KAZAN3 - {name} [{title}]' if name else 'KAZAN3')
+        self._load_parameters(getattr(self, '_previous_parameters', {}))
+        self._snapshot_parameters()
         self._fill_parameter_list()
         self.update_slider()
         self.sourceChanged.emit()
@@ -505,9 +534,11 @@ class KazanViewer(QMainWindow):
             traceback.print_exc()
             self.set('message', 'Plot error, see console')
 
-    @staticmethod
-    def _plot_axis(d: KzData) -> KzData:
-        """Axis corrections ax.dx / ax.dy (MATLAB getplotaxis, linear representation)."""
+    GAMMA = 1.3996e6   # electron gyromagnetic ratio, Hz/G (MATLAB app.gamma)
+
+    def _plot_axis(self, d: KzData) -> KzData:
+        """MATLAB getplotaxis: ax.dx / ax.dy corrections, then the X / Y representation
+        (points, g-factor from freq1, ppm of the reference)."""
         for axis, key in (('x', 'dx'), ('y', 'dy')):
             try:
                 shift = float(d.ax.get(key) or 0)
@@ -516,6 +547,36 @@ class KazanViewer(QMainWindow):
             if shift and d.ax.get(axis) is not None:
                 d.ax[axis] = np.asarray(d.ax[axis], float) + shift
             d.ax[key] = 0
+
+        def var(label):
+            label = str(label or '')
+            return label[:label.index(',') + 1] if ',' in label else 'a.u.'
+
+        def num(key, default):
+            try:
+                v = float(d.ax.get(key, default) or 0)
+            except (TypeError, ValueError):
+                v = default
+            return v or 1.0
+
+        x = np.asarray(d.ax.x, float)
+        xt = self.view.xtype
+        if xt == 'gspace':
+            with np.errstate(divide='ignore'):
+                d.ax.x = num('freq1', 34e9) / self.GAMMA / x
+            d.ax.xlabel = 'g-factor,'
+        elif xt == 'ppm-1':
+            d.ax.x = (x / num('reference', 34e9) - 1) * 1e6
+            d.ax.xlabel = var(d.ax.xlabel) + 'ppm'
+        elif xt == 'ppm':
+            d.ax.x = x / num('reference', 34e9) * 1e6
+            d.ax.xlabel = var(d.ax.xlabel) + 'ppm'
+        elif xt == 'pnt':
+            d.ax.x = np.arange(1.0, len(x) + 1)
+            d.ax.xlabel = var(d.ax.xlabel) + 'pts'
+        if self.view.ytype == 'pnt' and d.ax.get('y') is not None:
+            d.ax.y = np.arange(1.0, len(np.ravel(d.ax.y)) + 1)
+            d.ax.ylabel = var(d.ax.ylabel) + 'pts'
         return d
 
     def _datasets(self) -> list[tuple[KzData, str]]:
@@ -523,7 +584,7 @@ class KazanViewer(QMainWindow):
             d, warnings = process(self.src.copy())
             for w in warnings:
                 self.set('log', w)
-            return [(self._plot_axis(d), 'b')]
+            return [(self._plot_axis(d), self.src.ax.get('Color') or 'b')]
         sets = []
         for i, o in enumerate(self.out):
             d, _ = process(o.copy())
@@ -562,10 +623,18 @@ class KazanViewer(QMainWindow):
 
         if self.view.plot_type in ('Contour', 'Density') and ref.is_2d:
             re, im = self._part(ref.y)
-            draw = p.density if self.view.plot_type == 'Density' else p.contour
-            draw(p.real, ref.ax.x, ref.ax.y, re)
-            if im is not None:
-                draw(p.imag, ref.ax.x, ref.ax.y, im)
+            cc = matlab_vector(ref.ax.get('contour'), default=np.arange(1, 7) / 10)
+            for item, z in ((p.real, re), (p.imag, im)):
+                if z is None:
+                    continue
+                zmax, zmin = np.nanmax(z), np.nanmin(z)
+                sh = zmin if zmax < 0 else 0.0       # MATLAB: levels cc*max (+min if all < 0)
+                span = zmax - zmin if self.view.part == 'reim' else zmax
+                levels = cc * span + sh
+                if self.view.plot_type == 'Density':
+                    p.density(item, ref.ax.x, ref.ax.y, z, (levels.min(), levels.max()))
+                else:
+                    p.contour(item, ref.ax.x, ref.ax.y, z, levels=levels)
             ylabel = ref.ax.ylabel
         else:
             for d, color in sets:
@@ -583,6 +652,12 @@ class KazanViewer(QMainWindow):
                         p.line(p.imag, d.ax.x, im[:, k], color, **self._style(d))
             ylabel = ref.ax.get('unit') or 'a.u.'
         p.set_labels(ref.ax.xlabel, ylabel)
+        image = self.view.plot_type in ('Contour', 'Density') and ref.is_2d
+        for item in (p.real, p.imag):    # MATLAB SuperPlot XScale / XDir / YScale / YDir
+            item.setLogMode(x=self.view.xtype == 'semilog' and not image,
+                            y=self.view.ytype == 'semilog' and not image)
+            item.invertX(self.view.xtype in ('reverse', 'gspace'))
+            item.invertY(self.view.ytype == 'reverse')
 
         if ref.is_2d:
             yv = ref.ax.y[min(self.view.position, len(ref.ax.y) - 1)]
@@ -752,42 +827,112 @@ class KazanViewer(QMainWindow):
             self.load_directory(self.ePath.text())
 
     # ================================================================ parameters
-    #: port of kv3_ParameterReader('options'): (name, default, description)
+    #: MATLAB View.Par: (name, default, description); kept across file loads
+    VIEW_PARAMETERS = [('xlabel', '', 'X axis label'), ('ylabel', '', 'Y axis label'),
+                       ('Color', 'b', 'Trace colour'), ('LineStyle', '-', 'Line style'),
+                       ('LineWidth', 1.0, 'Line width'), ('Marker', 'none', 'Marker'),
+                       ('dx', 0.0, 'X axis correction'), ('s', 0.0, 'Y shift'),
+                       ('ps_mod', 1.0, 'Pseudo-modulation amplitude, points (PS,mod)'),
+                       ('tc', 2.0, 'Filter time constant, points'),
+                       ('contour', '.2:.1:.6', 'Contour levels, fraction of the maximum'),
+                       ('yslicelabel', '', 'Slice label format')]
+    #: port of kv3_ParameterReader('options'): read from each new file
     DATA_PARAMETERS = [('title', '', 'Title'), ('sample', '', 'Sample'), ('comment', '', 'Comment'),
                        ('formula', '', 'Formula'), ('freq1', 0.0, 'EPR frequency'),
                        ('reference', 0.0, 'Reference frequency'), ('cf', 0.0, 'Central Field'),
                        ('xunit', '', 'X axis unit'), ('yunit', '', 'Y axis unit (2D only)'),
                        ('unit', '', 'Signal unit')]
 
+    def _par_defaults(self) -> dict:
+        return {n: (d, a) for n, d, a in self.VIEW_PARAMETERS + self.DATA_PARAMETERS}
+
+    def _par_value(self, key):
+        """Value shown in the editor: the source's field, else the stored view value."""
+        default = self._par_defaults().get(key, ('', ''))[0]
+        if key in self.src.ax and self.src.ax[key] is not None:
+            return self.src.ax[key]
+        return self.view.par.get(key, default)
+
+    def _snapshot_parameters(self):
+        """Values a locked parameter returns to on the next source change."""
+        self._previous_parameters = {k: self._par_value(k) for k in self._par_defaults()}
+
+    def _load_parameters(self, previous: dict):
+        """MATLAB MakeParameters('load'): view parameters follow the file where it has
+        them; locked parameters keep their previous value and are written into src.ax."""
+        for name, _, _ in self.VIEW_PARAMETERS:
+            if name in self.src.ax and self.src.ax[name] is not None:
+                self.view.par[name] = self.src.ax[name]
+        for key in self.view.locked:
+            if key in previous:
+                self.src.ax[key] = previous[key]
+                if key in dict((n, 0) for n, _, _ in self.VIEW_PARAMETERS):
+                    self.view.par[key] = previous[key]
+
     def _fill_parameter_list(self):
-        keep = self.ddSelParameter.currentText()
+        keep = self.ddSelParameter.currentData() or self.ddSelParameter.currentText()
         self.ddSelParameter.blockSignals(True)
         self.ddSelParameter.clear()
-        for i, (name, _default, about) in enumerate(self.DATA_PARAMETERS):
-            self.ddSelParameter.addItem(name)
+        for i, (name, _default, about) in enumerate(self.VIEW_PARAMETERS + self.DATA_PARAMETERS):
+            self.ddSelParameter.addItem(f'* {name}' if name in self.view.locked else name, name)
             self.ddSelParameter.setItemData(i, about, Qt.ItemDataRole.ToolTipRole)
-        if keep:
-            self.ddSelParameter.setCurrentText(keep)
+        idx = self.ddSelParameter.findData(keep) if keep else -1
+        self.ddSelParameter.setCurrentIndex(idx if idx >= 0 else
+                                            self.ddSelParameter.findData('title'))
         self.ddSelParameter.blockSignals(False)
-        self._on_parameter_selected(self.ddSelParameter.currentText())
+        self._on_parameter_selected()
 
-    def _on_parameter_selected(self, key: str):
-        default = dict((n, d) for n, d, _ in self.DATA_PARAMETERS).get(key, '')
-        value = self.src.ax.get(key, default) if key else ''
+    def _on_parameter_selected(self, *_):
+        key = self.ddSelParameter.currentData()
+        value = self._par_value(key) if key else ''
+        if isinstance(value, np.ndarray):
+            value = ' '.join(f'{v:g}' for v in np.ravel(value))
         self.eParameter.setText(f'{value:g}' if isinstance(value, float) else str(value))
+        about = self._par_defaults().get(key, ('', ''))[1] if key else ''
+        locked = key in self.view.locked
+        self.eParameter.setToolTip((about + ' [locked: kept on file load]' if locked else about).strip())
+        self.eParameter.setStyleSheet('background: #ffffbf;' if locked else '')
 
     def _on_parameter_set(self):
-        key, text = self.ddSelParameter.currentText(), self.eParameter.text()
+        key, text = self.ddSelParameter.currentData(), self.eParameter.text()
         if not key:
             return
-        default = dict((n, d) for n, d, _ in self.DATA_PARAMETERS).get(key, '')
+        default = self._par_defaults().get(key, ('', ''))[0]
         try:
             value = float(text) if isinstance(default, float) else text
         except ValueError:
             self.set('message', f'{key}: a number is expected')
             return
         self.src.ax[key] = value
+        if key in dict((n, 0) for n, _, _ in self.VIEW_PARAMETERS):
+            self.view.par[key] = value
+        self._snapshot_parameters()
         self.plot_data()
+
+    def _parameter_menu(self, pos):
+        key = self.ddSelParameter.currentData()
+        if not key:
+            return
+        menu = QMenu(self)
+        a = menu.addAction(f"Lock '{key}'")
+        a.setCheckable(True)
+        a.setChecked(key in self.view.locked)
+        a.setToolTip('Keep this parameter when another file is loaded')
+        a.triggered.connect(lambda on: self._lock_parameter(key, on))
+        b = menu.addAction('Unlock all')
+        b.setEnabled(bool(self.view.locked))
+        b.triggered.connect(lambda: self._lock_parameter(None, False))
+        menu.exec(pos)
+
+    def _lock_parameter(self, key, on: bool):
+        if key is None:
+            self.view.locked.clear()
+        elif on and key not in self.view.locked:
+            self.view.locked.append(key)
+        elif not on and key in self.view.locked:
+            self.view.locked.remove(key)
+        self._snapshot_parameters()
+        self._fill_parameter_list()
 
     # ================================================================ callbacks
     def _on_src_out(self, value: int):
@@ -878,6 +1023,32 @@ class KazanViewer(QMainWindow):
         for text, value in (('Auto', 'auto'), ('First Dim', '1D'), ('Second Dim', '2D'),
                             ('Both', 'both')):
             add(sub, text, 'filtpar1', value)
+
+        def rep(menu_, text, axis, value):
+            a = menu_.addAction(text)
+            a.setCheckable(True)
+            a.setChecked(getattr(self.view, axis) == value)
+            a.triggered.connect(lambda: (setattr(self.view, axis, value), self.plot_data()))
+
+        menu.addSeparator()
+        a = menu.addAction('x-y')
+        a.setCheckable(True)
+        a.setChecked(self.view.xtype == 'plot' and self.view.ytype == 'plot')
+        a.triggered.connect(lambda: (setattr(self.view, 'xtype', 'plot'),
+                                     setattr(self.view, 'ytype', 'plot'), self.plot_data()))
+        sub = menu.addMenu('X')
+        for text, value in (('X', 'plot'), ('X pnts', 'pnt'), ('Reverse X', 'reverse'),
+                            ('X Log', 'semilog'), ('X g-space (freq1)', 'gspace'),
+                            ('X ppm (reference)', 'ppm'), ('X ppm - 1 (reference)', 'ppm-1')):
+            rep(sub, text, 'xtype', value)
+        sub = menu.addMenu('Y')
+        for text, value in (('Y', 'plot'), ('Y pnts', 'pnt'), ('Reverse Y', 'reverse'),
+                            ('Y Log', 'semilog')):
+            rep(sub, text, 'ytype', value)
+        menu.addSeparator()
+        reload_ = menu.addAction('Reload Data')
+        reload_.setEnabled(bool(self.src.filename) and Path(self.src.filename).exists())
+        reload_.triggered.connect(lambda: self.load_file(self.src.filename))
         menu.exec(pos)
 
     # ================================================================ menus
