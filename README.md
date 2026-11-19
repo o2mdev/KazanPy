@@ -83,7 +83,9 @@ integral, LW-L/G/V fits, LWhh, LWpp), FITPLUGIN3 (script fitting of one slice or
 slices with a script per slice, fit range, function presets, value/function editor),
 MATHPLUGIN3 (part, cut by ranges or MATLAB index expression, transpose, sum, 0/1st-order
 phase), COMPBOX3 (trace comparison: shift/zoom/sign per trace, normalise, fit to first,
-waterfall, join/ungroup, sort, add all). The viewer applies `ax.dx`/`ax.dy` axis
+waterfall, join/ungroup, sort, add all), MINUSBOX3 (reference +, -, .*, ./ current data
+with X/Y shift and zoom, per-slice Y zoom/shift, spline on differing axes),
+DESCRIPTION3 (description fields; pulse sequence plot of XEPR `Psd*` / ESP `XPD*`). The viewer applies `ax.dx`/`ax.dy` axis
 corrections when plotting, as MATLAB `getplotaxis`. Shared math in `kazan/math/` (EasySpin-convention
 line shapes, `kv_autofit` port).
 
@@ -100,5 +102,5 @@ scan count of 0 leaves the data unscaled; `to`/`step` are not taken as units.
 
 Not ported yet: RC filter, pseudo-modulation, loaders other than those above (ASCII2D,
 RMN, NIST, SpecManFLD/RAW, ...), loader options, parameter locking, X/Y axis
-representation menus, ESP pulse (JSS 32) axes, the other 8 plugins, CWPLUGIN3 LW-Md
+representation menus, ESP pulse (JSS 32) axes, the other 6 plugins, CWPLUGIN3 LW-Md
 (unfinished in MATLAB).
