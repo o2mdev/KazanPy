@@ -18,6 +18,7 @@ that were fixed.
 - [RAPIDSCAN3](#rapidscan3) - rapid scan
 - [NOISE3](#noise3) - signal, noise and SNR
 - [CWMH3](#cwmh3) - multi-harmonic CW
+- [ANLPLG3](#anlplg3) - decay fits
 
 ---
 
@@ -327,3 +328,49 @@ Differences from MATLAB:
   at the start for weak signals.
 * The power-saturation window is limited to the data length.
 * The window is titled *CWMH*. The phase toggle is labelled *Use* (it was *Button*).
+
+## ANLPLG3
+
+Exponential decay fits of the source. Times are in us; the real part is fitted. For 2D
+data the current viewer slice is fitted. The window title shows the chosen method.
+
+* **SE** - mono-exponential `A exp(-(t - t0)/T1)`.
+* **SE + IRF** - mono-exponential with its rise, convolved with a Gaussian instrument
+  response (IRF). The time offset `t_corr` and the IRF width are fitted too.
+* **DE** - bi-exponential; *T1 guess* / *T2 guess* are the start values.
+* **DE + IRF** - bi-exponential with IRF.
+* **Light-Dark** - for two-row light/dark data: dark minus light against the second
+  axis, with *Phase* and *Skew* (a factor on the imaginary part). Other data are only
+  phased.
+* **Phase** - *Phase* and *Skew* of the source.
+
+Typical use, as the SE tab says:
+
+1. Press **Reset Range**.
+2. Pick the time offset with the cross. On the SE and DE tabs this also sets the
+   first point.
+3. Adjust *First Point* / *Last Point*.
+4. Press **Compute**.
+
+*Fitting parameters*:
+
+* **Baseline** - pick a range on the viewer plot; its mean is subtracted before fitting.
+  Cancelling the pick clears it.
+* **Bound fit** - bounded fit. Amplitudes stay within 0.01..5 x the data maximum (-5..5
+  with *Negative amp*). Time constants and the IRF stay within *LB factor* .. *UB factor*
+  x their start values.
+* *Show residue x* and *Residue offset* scale and shift the residual trace.
+
+Output: source, baseline points (black circles), fit (red), residual (green), and for DE
+the two components (dashed). The result box shows the parameters and the fit error.
+Values within 2.5% of a bound are reported in blue; errors in red.
+
+Differences from MATLAB:
+
+* *SE + IRF* works. MATLAB compared the whole time axis with the fit range and called
+  `expIRF` incorrectly, so it failed.
+* *DE + IRF* starts T2 from its own *T2 guess*. MATLAB used the DE tab's value.
+* The time-offset crosses of the IRF tabs set the time-offset start value. In MATLAB
+  they did nothing.
+* Light-Dark and Phase outputs are titled after what they show. MATLAB titled them
+  'Baseline'.

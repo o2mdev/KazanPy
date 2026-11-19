@@ -47,7 +47,7 @@ Settings are stored in `%USERPROFILE%\.kazanpy\kazan3.ini` (same format as the M
 | `kazan/io/loaders.py` | `kv3_ScriptLoad` and the `kv3_*read` loaders |
 | `kazan/viewer/main_window.py` | `kazan3.mlapp` (also implements the host API) |
 | `kazan/viewer/plot.py` | `haReal` / `haImag` axes, MATLAB-styled pyqtgraph |
-| `kazan/math/` | `kv_autofit`, line shapes, `sinDecoBG` (rapid scan) |
+| `kazan/math/` | `kv_autofit`, line shapes, `sinDecoBG` (rapid scan), `fminsearch` / `fminsearchbnd` |
 | `plugins/*.py` | `*.mlapp` plugins |
 
 ## Documentation
