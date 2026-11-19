@@ -257,6 +257,9 @@ class KazanViewer(QMainWindow):
         self.lbDirlist = QListWidget()
         self.lbDirlist.currentRowChanged.connect(self._on_dirlist_selected)
         self.lbDirlist.itemActivated.connect(lambda _: self._on_dirlist_activated())
+        self.lbDirlist.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lbDirlist.customContextMenuRequested.connect(self._dirlist_menu)
+        self._select_source = True       # MATLAB cmSelectSource (checked by default)
         lv.addWidget(self.lbDirlist, 1)
         # loader options (MATLAB eLoadOption, ddLoadOption1/2)
         self.eLoadOption = QLineEdit()
@@ -271,6 +274,8 @@ class KazanViewer(QMainWindow):
         lv.addWidget(QLabel('Results'))
         self.TextArea = QPlainTextEdit(readOnly=True)
         self._scale(self.TextArea, h=90)
+        self.TextArea.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.TextArea.customContextMenuRequested.connect(self._results_menu)
         lv.addWidget(self.TextArea)
         h.addWidget(left)
         self._on_ext_changed(self.ddExt.currentText())
@@ -1053,7 +1058,38 @@ class KazanViewer(QMainWindow):
         if 0 <= row < len(self._dir_entries):
             name, is_dir = self._dir_entries[row]
             if not is_dir:
+                if self._select_source:      # MATLAB cmSelectSource: show the new file
+                    self.view.data_src_out = 1
+                    self.bSource.setChecked(True)
                 self.load_file(str(Path(self.ePath.text()) / name))
+
+    def _dirlist_menu(self, pos):
+        self._build_dirlist_menu().exec(self.lbDirlist.mapToGlobal(pos))
+
+    def _build_dirlist_menu(self) -> QMenu:
+        """MATLAB ContextMenu2 of the file list."""
+        m = QMenu(self)
+        m.addAction('Reload Data', lambda: self._on_dirlist_selected(self.lbDirlist.currentRow()))
+        m.addAction('Reload Folder', lambda: self.load_directory(self.ePath.text()))
+        m.addAction('Convert', lambda: self._menu_save(False))
+        a = m.addAction('Select Source')
+        a.setCheckable(True)
+        a.setChecked(self._select_source)
+        a.setToolTip('Show the Source when a file is loaded')
+        a.toggled.connect(lambda on: setattr(self, '_select_source', on))
+        return m
+
+    def _results_menu(self, pos):
+        m = self._build_results_menu()
+        m.exec(self.TextArea.mapToGlobal(pos))
+        m.deleteLater()
+
+    def _build_results_menu(self) -> QMenu:
+        """MATLAB ContextMenu3 of the Results box (Clear), plus Copy / Select All."""
+        m = self.TextArea.createStandardContextMenu()
+        m.addSeparator()
+        m.addAction('Clear', self.TextArea.clear)
+        return m
 
     def _on_dirlist_activated(self):
         row = self.lbDirlist.currentRow()

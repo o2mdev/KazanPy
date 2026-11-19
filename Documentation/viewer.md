@@ -9,6 +9,10 @@ in the two lists above it, then click a file to load it. **Up** goes to the pare
 *File > Open Directory* opens another folder. *File > Favorite Directories* keeps a list
 of folders (*Add Current* / *Remove Current* / *Remove All*).
 
+Right-click the file list for *Reload Data*, *Reload Folder*, *Convert* (Save Source)
+and *Select Source* (on by default: loading a file switches the view to Source).
+Right-click the *Results* box to copy or *Clear* it.
+
 Some data types have options (delimiter and column layout for ASCII, axis types for
 RMN 2D, ...), shown under the file list. Supported formats and their options are listed
 in [loaders.md](loaders.md).
