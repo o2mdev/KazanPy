@@ -32,7 +32,11 @@ QMainWindow { background: #f0f0f0; }
 QPushButton { background: #fdfdfd; border: 1px solid #adadad; border-radius: 3px;
               padding: 3px 8px; }
 QPushButton:hover { border-color: #0078d7; }
-QPushButton:checked, QPushButton:pressed { background: #d6d6d6; }
+QPushButton:pressed { background: #d6d6d6; }
+QPushButton:checkable { background: #f5f5f5; }
+/* kazan3 UpdateStateButtons: high-contrast "on" look, onColor = [1 0.65 0.2] */
+QPushButton:checked { background: #ffa633; border-color: #c27a1a; }
+QPushButton:checked:hover { border-color: #0078d7; }
 QListWidget::item:selected { background: #c0c0c0; color: black; }
 """
 

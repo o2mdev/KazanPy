@@ -75,10 +75,12 @@ out-of-process (TCP) bridge can be added later without changing plugins.
 Done: main window layout, directory browser, Source/Output/transfer, Real/Re-Im/Magn,
 1D/Stack/Contour/Density, slice slider, parameter row (data parameters), zoom/measure/axis
 buttons, processing context menu (M.aver., Sav.gol., Integrate), font, grid, favorites
-(plugins and directories), trace styles (Color/LineStyle/LineWidth/Marker as in SuperPlot).
+(plugins and directories), trace styles (Color/LineStyle/LineWidth/Marker as in SuperPlot), orange "on" state for
+all toggle buttons, viewer and plugins (kazan3 `UpdateStateButtons`, [1 0.65 0.2]).
 
 Plugins: SYMMETRIZE, CWPLUGIN3 (baseline/phase/filter, absorption-derivative-integral,
-integral, LW-L/G/V fits, LWhh, LWpp). Shared math in `kazan/math/` (EasySpin-convention
+integral, LW-L/G/V fits, LWhh, LWpp), FITPLUGIN3 (script fitting of one slice or of all
+slices with a script per slice, fit range, function presets, value/function editor). Shared math in `kazan/math/` (EasySpin-convention
 line shapes, `kv_autofit` port).
 
 Loaders: ASCII; SpecMan `.tdms` (`kazan/io/specman.py`, also reads interleaved TDMS);
@@ -94,5 +96,5 @@ scan count of 0 leaves the data unscaled; `to`/`step` are not taken as units.
 
 Not ported yet: RC filter, pseudo-modulation, loaders other than those above (ASCII2D,
 RMN, NIST, SpecManFLD/RAW, ...), loader options, parameter locking, X/Y axis
-representation menus, ESP pulse (JSS 32) axes, the other 11 plugins, CWPLUGIN3 LW-Md
+representation menus, ESP pulse (JSS 32) axes, the other 10 plugins, CWPLUGIN3 LW-Md
 (unfinished in MATLAB).
