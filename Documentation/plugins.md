@@ -180,17 +180,21 @@ Differences from MATLAB:
 ## TRANSIENT3
 
 For 2D transient data (field x time). *Transpose* (on by default) puts the field on the
-first dimension. The *field / time pts* box shows the data size.
+first dimension. The line under the top buttons shows the data size.
+
+The controls are grouped as *Data* (transpose, invert, show src, smoothing), *Field
+domain: baseline* and *Time domain* (the signal and dark point ranges). This layout
+replaces Kazan3's grid; the controls and what they do are the same.
 
 Processing, in order:
 
 1. The **dark signal** (mean over the *Dark signal* time points) is subtracted from every
    transient.
 2. **Smooth** (No / 3 / 5 / 10) applies Savitzky-Golay smoothing in time.
-3. **Inv** inverts the data.
+3. **Invert** inverts the data.
 
-The point ranges are typed as *Start* / *End* point numbers; the labels show them in
-time units. Changes apply with **Calculate**. The smoothing, baseline and *Show Fit*
+The point ranges are typed as first / last point numbers; the span in time units is
+shown next to them. Changes apply with **Calculate**. The smoothing, baseline and *Show Fit*
 buttons apply at once.
 
 **Field domain** (default):
@@ -198,18 +202,17 @@ buttons apply at once.
 * Output is the mean over the *Signal* time points, plotted against field.
 * A baseline of order No / 0 / 1 / 2 / 3 is fitted to the field **Range** (black
   circles in the plot) and subtracted. The range starts as the first 10 and last 11
-  points; *Add* / *Remv* change it by picking two points on the viewer plot.
+  points; *Add* / *Remove* change it by picking two points on the viewer plot.
 * **Show Fit** draws the baseline (green) instead of subtracting it; a red hint says so.
 * **Show src** adds the unsmoothed data (red).
 
 **Time domain** (click *Switch to Time*):
 
-* Mark a field first, with the cross next to *Switch to Time*, while in the field domain.
+* Mark a field first with *Mark field*, while in the field domain.
 * Output is the transient at the marked field, minus the mean transient of the baseline
   range (the off-resonance fields). The signal (green) and dark (black) regions are
   marked.
-* The crosses next to the *Signal* and *Dark signal* fields pick those ranges on the
-  plot.
+* *Pick* next to *Signal* and *Dark* picks that range on the plot.
 
 *Update when file changes* recalculates when a new file is loaded.
 

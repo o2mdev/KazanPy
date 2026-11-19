@@ -23,8 +23,8 @@ from __future__ import annotations
 import numpy as np
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QGridLayout, QLabel, QLineEdit,
-                               QPlainTextEdit, QPushButton, QWidget)
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QGridLayout, QGroupBox, QHBoxLayout,
+                               QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget)
 from scipy.signal import savgol_filter
 
 from kazan.core import KazanPlugin, KzData, Struct
@@ -54,12 +54,12 @@ def _range(first: str, last: str, n: int) -> np.ndarray:
     return idx.astype(int) - 1
 
 
-def _cross(tooltip=''):
-    b = QPushButton()
+def _cross(tooltip='', text=''):
+    """Pick button with the cross icon (MATLAB ginput buttons)."""
+    b = QPushButton(text)
     b.setIcon(QIcon(str(RESOURCES / 'pbCross.png')))
     b.setIconSize(QSize(14, 14))
     b.setToolTip(tooltip)
-    b.setSizePolicy(b.sizePolicy().horizontalPolicy(), b.sizePolicy().Policy.Expanding)
     return b
 
 
@@ -70,11 +70,21 @@ def _state(text, checked=False):
     return b
 
 
-def _label(text, center=True):
+def _segments(group: QButtonGroup, buttons) -> QHBoxLayout:
+    """A row of exclusive state buttons."""
+    row = QHBoxLayout()
+    row.setSpacing(2)
+    for b in buttons:
+        group.addButton(b)
+        b.setMinimumWidth(34)
+        row.addWidget(b)
+    row.addStretch(1)
+    return row
+
+
+def _hint(text=''):
     lab = QLabel(text)
-    lab.setWordWrap(True)
-    if center:
-        lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lab.setStyleSheet('color: #606060;')
     return lab
 
 
@@ -84,7 +94,7 @@ class transient3(KazanPlugin):  # noqa: N801 - MATLAB name
     def __init__(self, host, guid):
         super().__init__(host, guid)
         self.setWindowTitle('transient')
-        self.resize(455, 292)
+        self.resize(430, 420)
         self.area_fit: np.ndarray | None = None
         self.time_field = 1             # 1 field domain, 0 time domain
         self.show_field_position = 0    # 0-based field index of the time-domain trace
@@ -96,90 +106,101 @@ class transient3(KazanPlugin):  # noqa: N801 - MATLAB name
     def _build_ui(self):
         w = QWidget()
         self.setCentralWidget(w)
-        g = QGridLayout(w)
-        g.setContentsMargins(5, 5, 5, 5)
-        g.setSpacing(2)
-        for c, s in enumerate((10, 10, 6, 10, 20, 10, 10, 10, 10, 10)):
-            g.setColumnStretch(c, s)
-        for r in range(11):
-            g.setRowStretch(r, 1)
+        v = QVBoxLayout(w)
+        v.setContentsMargins(8, 8, 8, 8)
+        v.setSpacing(6)
 
+        # ---- domain switch, field marker, update
+        top = QHBoxLayout()
         self.pbTimeField = _state('Switch to Time')
-        g.addWidget(self.pbTimeField, 0, 0, 2, 3)
-        self.pbMarkField = _cross('Mark Field for Trace')
-        g.addWidget(self.pbMarkField, 0, 3, 2, 1)
+        self.pbTimeField.setToolTip('Field domain: the signal against field; '
+                                    'time domain: the transient at the marked field')
+        self.pbMarkField = _cross('Mark the field of the time-domain trace', 'Mark field')
         self.cbFileUpdate = QCheckBox('Update when file changes')
         self.cbFileUpdate.setChecked(True)
-        g.addWidget(self.cbFileUpdate, 0, 5, 1, 5)
+        top.addWidget(self.pbTimeField)
+        top.addWidget(self.pbMarkField)
+        top.addStretch(1)
+        top.addWidget(self.cbFileUpdate)
+        v.addLayout(top)
+        self.eInfo = _hint('-')
+        v.addWidget(self.eInfo)
 
-        g.addWidget(_label('Smooth'), 1, 4)
+        # ---- data
+        box = QGroupBox('Data')
+        g = QGridLayout(box)
+        self.pbTrans = QCheckBox('Transpose')
+        self.pbTrans.setChecked(True)
+        self.pbTrans.setToolTip('Rows of the source are the field')
+        self.cbInvert = QCheckBox('Invert')
+        self.cbShowSrc = QCheckBox('Show src')
+        row = QHBoxLayout()
+        for cb in (self.pbTrans, self.cbInvert, self.cbShowSrc):
+            row.addWidget(cb)
+        row.addStretch(1)
+        g.addLayout(row, 0, 0, 1, 2)
+        g.addWidget(QLabel('Smooth'), 1, 0)
         self.smooth_group = QButtonGroup(self)
         self.tbS0, self.tbS1, self.tbS2, self.tbS3 = (
             _state('No', True), _state('3'), _state('5'), _state('10'))
-        for c, b in enumerate((self.tbS0, self.tbS1, self.tbS2, self.tbS3), start=5):
-            self.smooth_group.addButton(b)
-            g.addWidget(b, 1, c, 2, 1)
+        g.addLayout(_segments(self.smooth_group, (self.tbS0, self.tbS1, self.tbS2, self.tbS3)), 1, 1)
+        g.setColumnStretch(1, 1)
+        v.addWidget(box)
 
-        self.eInfo = QPlainTextEdit('-')
-        self.eInfo.setReadOnly(True)
-        g.addWidget(self.eInfo, 2, 0, 2, 4)
-        self.cbShowSrc = QCheckBox('Show src')
-        g.addWidget(self.cbShowSrc, 2, 4)
-        self.ShowFitHint = _label('Show Fit: baseline is drawn, NOT subtracted')
-        self.ShowFitHint.setStyleSheet('color: #d90000; font-weight: bold;')
-        self.ShowFitHint.setVisible(False)
-        g.addWidget(self.ShowFitHint, 3, 4, 1, 6)
-
-        self.pbTrans = QCheckBox('Transpose')
-        self.pbTrans.setChecked(True)
-        g.addWidget(self.pbTrans, 4, 0, 1, 2)
-        self.cbInvert = QCheckBox('Inv')
-        g.addWidget(self.cbInvert, 4, 2, 1, 2)
-        g.addWidget(_label('BL'), 4, 4)
+        # ---- field domain: baseline
+        box = QGroupBox('Field domain: baseline')
+        g = QGridLayout(box)
+        g.addWidget(QLabel('Order'), 0, 0)
         self.bl_group = QButtonGroup(self)
         self.tbFno, self.tbF0, self.tbF1, self.tbF2, self.tbF3 = (
             _state('No', True), _state('0'), _state('1'), _state('2'), _state('3'))
-        for c, b in enumerate((self.tbFno, self.tbF0, self.tbF1, self.tbF2, self.tbF3), start=5):
-            self.bl_group.addButton(b)
-            g.addWidget(b, 4, c, 2, 1)
-
-        self.text2 = _label('Signal, pts', False)
-        g.addWidget(self.text2, 5, 0, 1, 4)
+        g.addLayout(_segments(self.bl_group, (self.tbFno, self.tbF0, self.tbF1, self.tbF2, self.tbF3)), 0, 1)
+        g.addWidget(QLabel('Range'), 1, 0)
+        self.pbAddRange = _cross('Add a field range to the baseline area', 'Add')
+        self.pbRemoveRange = _cross('Remove a field range from the baseline area', 'Remove')
         self.cbShowFit = QCheckBox('Show Fit')
         self.cbShowFit.setToolTip('Show the fit area and baseline curve; the baseline is NOT '
                                   'subtracted while checked')
-        g.addWidget(self.cbShowFit, 5, 4)
+        row = QHBoxLayout()
+        row.addWidget(self.pbAddRange)
+        row.addWidget(self.pbRemoveRange)
+        row.addStretch(1)
+        row.addWidget(self.cbShowFit)
+        g.addLayout(row, 1, 1)
+        self.ShowFitHint = QLabel('Show Fit: baseline is drawn, NOT subtracted')
+        self.ShowFitHint.setStyleSheet('color: #d90000; font-weight: bold;')
+        self.ShowFitHint.setVisible(False)
+        g.addWidget(self.ShowFitHint, 2, 0, 1, 2)
+        g.setColumnStretch(1, 1)
+        v.addWidget(box)
 
+        # ---- time domain: signal and dark ranges
+        box = QGroupBox('Time domain, points')
+        g = QGridLayout(box)
         self.eSstart, self.eSend = QLineEdit('200'), QLineEdit('600')
         self.eBLstart, self.eBLend = QLineEdit('1'), QLineEdit('10')
-        for e in (self.eSstart, self.eSend, self.eBLstart, self.eBLend):
-            e.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        g.addWidget(_label('Start', False), 6, 0)
-        g.addWidget(self.eSstart, 6, 1, 1, 2)
-        g.addWidget(_label('End', False), 7, 0)
-        g.addWidget(self.eSend, 7, 1, 1, 2)
-        self.pbSelectSignal = _cross('Select the signal time range')
-        g.addWidget(self.pbSelectSignal, 6, 3, 2, 1)
-        g.addWidget(_label('Range'), 6, 4, 2, 1)
-        self.pbAddRange = _cross('Add a field range to the baseline area')
-        g.addWidget(self.pbAddRange, 6, 5, 2, 1)
-        g.addWidget(_label('Add'), 6, 6, 2, 1)
-        self.pbRemoveRange = _cross('Remove a field range from the baseline area')
-        g.addWidget(self.pbRemoveRange, 6, 7, 2, 1)
-        g.addWidget(_label('Remv'), 6, 8, 2, 1)
+        self.pbSelectSignal = _cross('Select the signal time range on the plot', 'Pick')
+        self.pbSelectDark = _cross('Select the dark signal time range on the plot', 'Pick')
+        self.text2, self.text1 = _hint(), _hint()
+        for r, (name, a, b, pick, span) in enumerate((
+                ('Signal', self.eSstart, self.eSend, self.pbSelectSignal, self.text2),
+                ('Dark', self.eBLstart, self.eBLend, self.pbSelectDark, self.text1))):
+            for e in (a, b):
+                e.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                e.setMaximumWidth(70)
+            g.addWidget(QLabel(name), r, 0)
+            g.addWidget(a, r, 1)
+            g.addWidget(QLabel('to'), r, 2)
+            g.addWidget(b, r, 3)
+            g.addWidget(pick, r, 4)
+            g.addWidget(span, r, 5)
+        g.setColumnStretch(5, 1)
+        v.addWidget(box)
 
-        self.text1 = _label('Dark signal, pts', False)
-        g.addWidget(self.text1, 8, 0, 1, 4)
-        g.addWidget(_label('Start', False), 9, 0)
-        g.addWidget(self.eBLstart, 9, 1, 1, 2)
-        g.addWidget(_label('End', False), 10, 0)
-        g.addWidget(self.eBLend, 10, 1, 1, 2)
-        self.pbSelectDark = _cross('Select the dark signal time range')
-        g.addWidget(self.pbSelectDark, 9, 3, 2, 1)
+        v.addStretch(1)
         self.pbCalculate = QPushButton('Calculate')
-        self.pbCalculate.setSizePolicy(self.pbCalculate.sizePolicy().horizontalPolicy(),
-                                       self.pbCalculate.sizePolicy().Policy.Expanding)
-        g.addWidget(self.pbCalculate, 9, 5, 2, 5)
+        self.pbCalculate.setMinimumHeight(32)
+        v.addWidget(self.pbCalculate)
 
         # wiring
         self.pbTimeField.clicked.connect(self.time_field_changed)
@@ -209,7 +230,7 @@ class transient3(KazanPlugin):  # noqa: N801 - MATLAB name
                 _, y, _ = self.raw_data()
             except Exception:  # noqa: BLE001 - no usable source
                 return
-            self.eInfo.setPlainText(f'field {y.shape[0]} pts\n time {y.shape[1]} pts')
+            self.eInfo.setText(f'field {y.shape[0]} pts, time {y.shape[1]} pts')
             self.draw_all()
 
     def recalculate(self, *_):
@@ -331,13 +352,14 @@ class transient3(KazanPlugin):  # noqa: N801 - MATLAB name
                     scale, unit = sc, u
                     break
 
-        def text(name, idx):
+        def text(idx):
+            """The time span of a point range, e.g. '3.98 to 11.98 us'."""
             if not len(idx) or not t.size or idx.max() >= t.size:
-                return name
-            s = f'{name} ({t[idx.min()] * scale:.4g} to {t[idx.max()] * scale:.4g}'
-            return s + (f' {unit})' if unit else ')')
-        self.text2.setText(text('Signal, pts', sig))
-        self.text1.setText(text('Dark signal, pts', dark))
+                return ''
+            s = f'{t[idx.min()] * scale:.4g} to {t[idx.max()] * scale:.4g}'
+            return s + (f' {unit}' if unit else '')
+        self.text2.setText(text(sig))
+        self.text1.setText(text(dark))
 
     # ================================================================ callbacks
     def time_field_changed(self):

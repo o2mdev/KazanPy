@@ -18,7 +18,7 @@ sig = np.where(t[:, None] > 4e-6, np.exp(-(t[:, None] - 4e-6) / 3e-6), 0) * line
 y = 0.7 + sig + 0.002 * (B - 3300)[None, :] + 0.01 * np.random.default_rng(0).standard_normal((800, 100))
 w.set_data('source', KzData(y=y, ax=Struct(x=t, xlabel='Time, s', y=B, ylabel='Field, G'), dsc=Struct(), title='tr'))
 tr = launch('TRANSIENT3')
-print('info', tr.eInfo.toPlainText().replace('\n', ' |'), '|', tr.text2.text(), '|', tr.text1.text())
+print('info', tr.eInfo.text(), '|', tr.text2.text(), '|', tr.text1.text())
 o = w.out[0]; print('field out', o.title, o.y.shape, 'peak at', o.ax.x[np.argmax(o.y.real)], 'edge level', round(float(o.y.real[:5].mean()), 4))
 tr.tbF1.click(); o = w.out[0]; print('BL1 edge level', round(float(o.y.real[:10].mean()), 4), 'titles', [d.title for d in w.out])
 tr.tbS2.click(); tr.cbShowFit.setChecked(True); print('showfit', [d.title for d in w.out], tr.ShowFitHint.isVisible())
