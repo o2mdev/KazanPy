@@ -9,7 +9,9 @@ in the two lists above it, then click a file to load it. **Up** goes to the pare
 *File > Open Directory* opens another folder. *File > Favorite Directories* keeps a list
 of folders (*Add Current* / *Remove Current* / *Remove All*).
 
-Supported formats are listed in [loaders.md](loaders.md).
+Some data types have options (delimiter and column layout for ASCII, axis types for
+RMN 2D, ...), shown under the file list. Supported formats and their options are listed
+in [loaders.md](loaders.md).
 
 ## Source and Output
 

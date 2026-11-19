@@ -17,12 +17,14 @@
 **Plugins**: SYMMETRIZE, CWPLUGIN3, FITPLUGIN3, MATHPLUGIN3, COMPBOX3, MINUSBOX3,
 DESCRIPTION3, TRANSIENT3, RAPIDSCAN3, NOISE3, CWMH3, ANLPLG3. See [plugins.md](plugins.md).
 
-**Loaders**: see [loaders.md](loaders.md).
+**Loaders**: all Kazan3 loaders with MATLAB source, plus loader options. See
+[loaders.md](loaders.md).
 
 ## Not ported yet
 
 * **Viewer**: RC filter, pseudo-modulation, parameter locking, X/Y axis representation
   menus, ESP pulse (JSS 32) axes.
-* **Loaders**: ASCII2D, RMN, NIST, SpecManFLD / RAW and others; loader options.
+* **Loaders**: UofC_bin, UofC_img, WEBMOSS, transient, RMNdat2D (no MATLAB source or
+  helpers). See [loaders.md](loaders.md).
 * **Plugins**: SIMPLUGIN3 (needs EasySpin); CWPLUGIN3 LW-Md (unfinished in
   MATLAB).

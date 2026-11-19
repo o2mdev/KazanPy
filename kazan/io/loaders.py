@@ -2,18 +2,16 @@
 
 Every loader has the MATLAB signature ``ax, y, dsc = loader(filename, **options)``.
 The extension / subtype lists mirror the MATLAB ones so the dropdowns look the same;
-subtypes without a Python loader yet raise :class:`NotImplementedError`.
+subtypes without a Python loader (RMNdat2D, transient, UofC_bin, UofC_img, WEBMOSS: no
+MATLAB source or helpers available) raise :class:`NotImplementedError`.
 """
 from __future__ import annotations
 
-import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-import numpy as np
-
-from ..core.data import Struct
-from . import bruker, specman
+from . import ascii, bruker, nmr, other, specman
 
 EXTENSIONS = ['*.', '*.aqs', '*.img', '*.jpg', '*.dat', '*.d00', '*.d01', '*.d02', '*.dsc',
               '*.exp', '*.par', '*.rmn', '*.tdms', '*.txt', '*']
@@ -41,53 +39,77 @@ def subtypes(ext: str) -> list[str]:
     return SUBTYPES.get(ext, ['---'])
 
 
-_NUM_SPLIT = re.compile(r'[\s,;]+')
+@dataclass
+class LoadOption:
+    """One loader option control (MATLAB ``kv3_ScriptLoad('options')``): a drop-down
+    (``items`` = (label, value) pairs) or, with ``items=None``, a text field."""
+    items: list | None
+    default: object = None
+    tooltip: str = ''
 
 
-def ascii_read(filename: str, first_column_x: bool = True):
-    """Port of ``kv3_asciiread``: numeric rows become data, other lines go to dsc."""
-    rows, text = [], []
-    with open(filename, 'r', encoding='utf-8', errors='replace') as f:
-        for line in f:
-            parts = [p for p in _NUM_SPLIT.split(line.strip()) if p]
-            try:
-                values = [float(p) for p in parts]
-            except ValueError:
-                values = []
-            if values and (not rows or len(values) == len(rows[0])):
-                rows.append(values)
-            elif line.strip():
-                text.append(line.rstrip('\n'))
-    if not rows:
-        raise ValueError('No numeric data found')
-    data = np.array(rows)
+_ASCII_OPTIONS = [LoadOption(ascii.DELIMITERS, '	', 'Column delimiter'),
+                  LoadOption(ascii.LAYOUTS, 3, 'Column layout'),
+                  LoadOption(None, 'Time, s', 'X axis label (when the file has none)')]
 
-    ax = Struct(type='data', xlabel='?', ylabel='Intensity', unit='a.u.')
-    if first_column_x and data.shape[1] > 1:
-        ax.x = data[:, 0]
-        y = data[:, 1:]
-    else:
-        ax.x = np.arange(1.0, data.shape[0] + 1.0)
-        y = data
-    dsc = Struct(ASCII='ASCII loader for KAZAN viewer')
-    for i, s in enumerate(text, 1):
-        dsc[f'c{i}'] = s
-    return ax, y, dsc
-
-
-# (extension, subtype) -> loader; (None, subtype) applies to any extension
-LOADERS: dict[tuple, Callable] = {
-    (None, 'ASCII'): ascii_read,
-    (None, 'XEPR'): bruker.brukerread,
-    ('*.tdms', 'SpecMan'): specman.smtdmsread,
-    ('*.exp', 'SpecMan'): specman.d01read,
-    ('*.d01', 'SpecMan'): specman.d01read,
+#: subtype -> option controls (index 0, 1: drop-downs, 2: text field)
+OPTIONS: dict[str, list[LoadOption]] = {
+    'ASCII': _ASCII_OPTIONS,
+    'ASCII2D': [LoadOption([('complex (re, im)', True), ('real', False)], True, 'Values'),
+                LoadOption([('Not used', 1)], 1),
+                LoadOption(None, '128 64 1e-6 1e-6 0', 'xsize ysize [xdwell ydwell cfreq]')],
+    'RMN_2D': [LoadOption(nmr.RMN2D_TYPES, '2DTT', 'Axis types'),
+               LoadOption([('Not used', 1)], 1), LoadOption(None, '')],
+    'OPUS_FTIR': [LoadOption(other.OPUS_PARTS, 1, 'Data part'),
+                  LoadOption([('Not used', 1)], 1), LoadOption(None, '')],
 }
 
 
-def load(filename: str, ext: str, subtype: str, **options):
-    """Run the loader for ``ext`` + ``subtype``; returns ``(ax, y, dsc)``."""
+def options(subtype: str) -> list[LoadOption]:
+    return OPTIONS.get(subtype, [])
+
+
+def _opt(values, k, default):
+    return values[k] if values and len(values) > k and values[k] is not None else default
+
+
+def _ascii(f, o):
+    return ascii.ascii_load(f, _opt(o, 0, '	'), int(_opt(o, 1, 3)), str(_opt(o, 2, '')))
+
+
+# (extension, subtype) -> loader(filename, option values); (None, subtype) for any extension
+LOADERS: dict[tuple, Callable] = {
+    (None, 'ASCII'): _ascii,
+    (None, 'ASCII2D'): lambda f, o: ascii.ascii2d_load(f, str(_opt(o, 2, '')), bool(_opt(o, 0, True))),
+    (None, 'XEPR'): lambda f, o: bruker.brukerread(f),
+    (None, 'XEPR_JSS'): lambda f, o: bruker.brukerread_jss(f),
+    (None, 'ASTASHKIN'): lambda f, o: other.astashkin_read(f),
+    ('*.tdms', 'SpecMan'): lambda f, o: specman.smtdmsread(f),
+    ('*.exp', 'SpecMan'): lambda f, o: specman.d01read(f),
+    ('*.d01', 'SpecMan'): lambda f, o: specman.d01read(f),
+    (None, 'SpecManNIST'): lambda f, o: specman.nist_d01read(f),
+    (None, 'SpecManFLD'): lambda f, o: specman.d01read_field(f),
+    (None, 'SpecManRAW'): lambda f, o: specman.d02read(f),
+    (None, 'RMN_1D'): lambda f, o: nmr.rmnread(f, '1D'),
+    (None, 'RMN_2D'): lambda f, o: nmr.rmnread(f, '2D', str(_opt(o, 0, '2DTT'))),
+    (None, 'RMNdat'): lambda f, o: nmr.rmnread(f, '1dtxt'),
+    (None, 'XWINNMR'): lambda f, o: nmr.xwinnmr(f),
+    (None, 'WINNMR'): lambda f, o: nmr.winnmr(f),
+    (None, 'TecMag'): lambda f, o: nmr.tecmag_read(f),
+    (None, 'Spinsight'): lambda f, o: nmr.spinsight_read(f),
+    (None, 'OPUS_FTIR'): lambda f, o: other.opus_read(f, int(_opt(o, 0, 1))),
+    (None, 'image'): lambda f, o: other.image_read(f),
+}
+
+
+def load(filename: str, ext: str, subtype: str, option_values: list | None = None):
+    """Run the loader for ``ext`` + ``subtype``; returns ``(ax, y, dsc)``.
+
+    ``option_values`` are the values of the :func:`options` controls (defaults if None).
+    """
     loader = LOADERS.get((ext, subtype)) or LOADERS.get((None, subtype))
     if loader is None:
         raise NotImplementedError(f"Loader '{subtype}' ({ext}) is not ported yet")
-    return loader(str(Path(filename)), **options)
+    if option_values is None:
+        option_values = [o.default for o in options(subtype)]
+    return loader(str(Path(filename)), option_values)

@@ -500,3 +500,102 @@ def smtdmsread(filename):
         dsc.KAZANwarning = 'Incomplete data: missing scans are zero'
     dsc.KAZANformat = 'SPECMANTDMS'
     return ax, spec, dsc
+
+
+# =====================================================================  .d01 variants / .d02
+
+def _d01_streams(fname: Path) -> list[np.ndarray]:
+    """Raw streams of a ``.d01`` file (column-major, header dimensions)."""
+    b = Path(fname).read_bytes()
+    ndim1, dformat = struct.unpack_from('<II', b, 0)
+    pos, heads = 8, []
+    for _ in range(ndim1):
+        ndim2 = struct.unpack_from('<i', b, pos)[0]
+        dims = list(struct.unpack_from('<4i', b, pos + 4))
+        total = struct.unpack_from('<i', b, pos + 20)[0]
+        dims[ndim2:] = [1] * (4 - ndim2)
+        heads.append((dims, total))
+        pos += 24
+    dt = '<f4' if dformat == 1 else '<f8'
+    out = []
+    for dims, total in heads:
+        a = np.frombuffer(b, dtype=dt, count=total, offset=pos).astype(float)
+        pos += total * np.dtype(dt).itemsize
+        out.append(a.reshape(dims, order='F') if int(np.prod(dims)) == total else a)
+    return out
+
+
+def _resample_field(ax, spec, field):
+    """Put the data on an even field axis from the measured field values."""
+    field = np.ravel(field)
+    ax.x = np.linspace(field.min(), field.max(), len(field))
+    f, idx = np.unique(field, return_index=True)
+    s = spec.reshape(spec.shape[0], -1)[idx]
+    cols = [np.interp(ax.x, f, c.real) + (1j * np.interp(ax.x, f, c.imag) if np.iscomplexobj(c) else 0)
+            for c in s.T]
+    return np.column_stack(cols)
+
+
+def d01read_field(filename):
+    """Port of ``kv3_d01read_field`` (SpecManFLD): ``.d01`` with the field measured by
+    a field meter (first extra stream) when ``sweep1`` sweeps ``FieldM``; the data are
+    resampled onto an even field axis."""
+    ax, spec, dsc = d01read(filename)
+    data = ax.get('data') or []
+    if 'aquisition_FieldM' in dsc and 'FieldM' in dsc.get('sweep_sweep1', '') and data:
+        print('kv_d01read_field: resampling field axis.')
+        spec = _resample_field(ax, spec, np.asarray(data[0]) * ax.scans)
+    return ax, spec, dsc
+
+
+def nist_d01read(filename):
+    """Port of ``kv_nistd01read`` (SpecManNIST): extra streams are divided by their own
+    scan counts; with ``aquisition_FieldM`` the data are resampled on the field from
+    stream 3."""
+    ax, spec, dsc = d01read(filename)
+    dsc.KAZANformat = 'SPECMANNISTD01'
+    streams = _d01_streams(Path(filename).with_suffix('.d01'))
+    scans = [float(v) for v in dsc.get('streams_scans', '1').split(',') if v.strip()] or [1.0]
+    first = 2 if len(streams) > 1 and streams[1].shape == streams[0].shape else 1
+    ax.data = [streams[k] / (scans[k] if k < len(scans) and scans[k] else 1.0)
+               for k in range(first, len(streams))]
+    if 'aquisition_FieldM' in dsc and len(streams) >= 3:
+        print('kv_nistd01read: resampling field axis.')
+        spec = _resample_field(ax, spec, streams[2])
+    return ax, spec, dsc
+
+
+def d02read(filename):
+    """Port of ``kv_d02read`` (SpecManRAW): ``.d02`` pairs (uint32 index, float32 value)
+    of every scan; output is one column per scan."""
+    p = Path(filename)
+    dsc = read_exp(p.with_suffix('.exp'))
+    ax = specman_par(dsc)
+    sweepax = ax.sweepax
+    sz = int(np.prod([a.size for a in sweepax])) if sweepax else 1
+    hidden = int(np.prod([a.dim for a in sweepax if a.t == 'S'])) if sweepax else 1
+    channels = len(sweepax[0].var) if sweepax and sweepax[0].var else 1
+    x = np.asarray(ax.get('x', np.arange(1.0, sz + 1)), float)
+    if hidden > 1:
+        span = x.max() - x.min()
+        ax.x = np.concatenate([x + k * span * 1.1 for k in range(hidden)])
+    raw = np.fromfile(p.with_suffix('.d02'), dtype=np.dtype([('i', '<u4'), ('v', '<f4')]))
+    points = len(raw)
+    full_size = sz * hidden
+    full_scans = points // (sz * channels * hidden)
+    n = channels * full_size * full_scans
+    idx = raw['i'][:n].astype(np.int64)
+    if hidden > 1:
+        idx = idx + (np.arange(n) % hidden) * sz
+    idx = idx.reshape((channels * full_size, full_scans), order='F')
+    idx = idx + np.arange(full_scans)[None, :] * channels * full_size
+    buf = np.zeros(n)
+    buf[idx.ravel(order='F')] = raw['v'][:n]
+    buf = buf.reshape((full_size, channels, full_scans), order='F')
+    spec = buf[:, 0, :] + (1j * buf[:, 1, :] if channels == 2 else 0)
+    if len(np.ravel(ax.get('x', []))) != full_size:
+        ax.x = np.arange(1.0, full_size + 1)
+    ax.y, ax.ylabel = np.arange(1.0, full_scans + 1), 'scans'
+    ax.type = 'data'
+    dsc.KAZANformat = 'SPECMAND01'
+    return ax, spec, dsc

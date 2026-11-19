@@ -109,8 +109,7 @@ class KazanViewer(QMainWindow):
         self.ddExt.setCurrentText(self.ini.get('KazanViewer', 'ext', '*'))
         self.ddExt.currentTextChanged.connect(self._on_ext_changed)
         self.ddDataType = QComboBox()
-        self.ddDataType.currentTextChanged.connect(
-            lambda t: t and self.ini.set('KazanViewer', 'datatype', t))
+        self.ddDataType.currentTextChanged.connect(self._on_datatype_changed)
         self.bUp = QPushButton('Up')
         self.bUp.setFixedWidth(46)
         self.bUp.clicked.connect(lambda: self.load_directory(str(Path(self.ePath.text()).parent)))
@@ -122,6 +121,16 @@ class KazanViewer(QMainWindow):
         self.lbDirlist.currentRowChanged.connect(self._on_dirlist_selected)
         self.lbDirlist.itemActivated.connect(lambda _: self._on_dirlist_activated())
         lv.addWidget(self.lbDirlist, 1)
+        # loader options (MATLAB eLoadOption, ddLoadOption1/2)
+        self.eLoadOption = QLineEdit()
+        self.eLoadOption.editingFinished.connect(self._save_load_options)
+        lv.addWidget(self.eLoadOption)
+        row = QHBoxLayout()
+        self.ddLoadOption1, self.ddLoadOption2 = QComboBox(), QComboBox()
+        for dd in (self.ddLoadOption1, self.ddLoadOption2):
+            dd.currentIndexChanged.connect(self._save_load_options)
+            row.addWidget(dd, 1)
+        lv.addLayout(row)
         lv.addWidget(QLabel('Results'))
         self.TextArea = QPlainTextEdit(readOnly=True)
         self.TextArea.setFixedHeight(90)
@@ -129,6 +138,7 @@ class KazanViewer(QMainWindow):
         h.addWidget(left)
         self._on_ext_changed(self.ddExt.currentText())
         self.ddDataType.setCurrentText(self.ini.get('KazanViewer', 'datatype', ''))
+        self._on_datatype_changed(self.ddDataType.currentText())
 
         # ---- right: view buttons, parameter row, plot, slice slider
         right = QWidget()
@@ -427,7 +437,8 @@ class KazanViewer(QMainWindow):
         ext, subtype = self.ddExt.currentText(), self.ddDataType.currentText()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            ax, y, dsc = loaders.load(filename, ext, subtype)
+            opts = self.load_option_values()
+            ax, y, dsc = loaders.load(filename, ext, subtype, opts)
         except Exception as e:
             traceback.print_exc()
             self.set('message', f'Load error: {e}')
@@ -451,7 +462,7 @@ class KazanViewer(QMainWindow):
         self._message_until = 0.0   # a new file replaces any pending message
         self.ini.set('KazanViewer', 'last_file', filename)
         self.src = verify(KzData(y=y, ax=ax, dsc=dsc, filename=filename,
-                                 script=f"loaders.load({filename!r}, {ext!r}, {subtype!r})"))
+                                 script=f"loaders.load({filename!r}, {ext!r}, {subtype!r}, {opts!r})"))
         self.src_control_update()
 
     def src_control_update(self):
@@ -688,6 +699,50 @@ class KazanViewer(QMainWindow):
         row = self.lbDirlist.currentRow() + step
         if 0 <= row < self.lbDirlist.count():
             self.lbDirlist.setCurrentRow(row)
+
+    # ================================================================ loader options
+    def _on_datatype_changed(self, subtype: str):
+        """Port of ddDataTypeValueChanged: show the loader's option controls."""
+        if subtype:
+            self.ini.set('KazanViewer', 'datatype', subtype)
+        opts = loaders.options(subtype)
+        saved = self.ini.get('LoadOptions', subtype, '').split('|') if subtype else []
+        self._loading_options = True
+        for k, dd in enumerate((self.ddLoadOption1, self.ddLoadOption2)):
+            dd.blockSignals(True)
+            dd.clear()
+            if k < len(opts) and opts[k].items:
+                for label, value in opts[k].items:
+                    dd.addItem(label, value)
+                labels = [label for label, _ in opts[k].items]
+                values = [value for _, value in opts[k].items]
+                pick = saved[k] if k < len(saved) and saved[k] in labels else None
+                dd.setCurrentIndex(labels.index(pick) if pick else
+                                   values.index(opts[k].default) if opts[k].default in values else 0)
+                dd.setToolTip(opts[k].tooltip)
+            dd.setVisible(k < len(opts) and bool(opts[k].items))
+            dd.blockSignals(False)
+        has_edit = len(opts) > 2
+        self.eLoadOption.setVisible(has_edit)
+        if has_edit:
+            self.eLoadOption.setText(saved[2] if len(saved) > 2 else str(opts[2].default or ''))
+            self.eLoadOption.setToolTip(opts[2].tooltip)
+        self._loading_options = False
+
+    def load_option_values(self) -> list:
+        opts = loaders.options(self.ddDataType.currentText())
+        if not opts:
+            return []
+        values = [dd.currentData() for dd in (self.ddLoadOption1, self.ddLoadOption2)]
+        return values[:min(len(opts), 2)] + ([self.eLoadOption.text()] if len(opts) > 2 else [])
+
+    def _save_load_options(self, *_):
+        subtype = self.ddDataType.currentText()
+        if getattr(self, '_loading_options', False) or not loaders.options(subtype):
+            return
+        self.ini.set('LoadOptions', subtype, '|'.join(
+            (self.ddLoadOption1.currentText(), self.ddLoadOption2.currentText(),
+             self.eLoadOption.text())))
 
     def _on_ext_changed(self, ext: str):
         self.ini.set('KazanViewer', 'ext', ext)

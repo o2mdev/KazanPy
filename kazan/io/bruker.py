@@ -170,3 +170,53 @@ def _read_matrix(fname: Path, nx: int, ny: int, dtype: str, is_complex: bool) ->
     if is_complex:
         x = x[0::2] + 1j * x[1::2]
     return x.reshape((nx, ny), order='F')
+
+
+def _jss_axis(par: Struct) -> Struct:
+    """Port of ``XEPRparJSS``: axes of old ESP files from the JSS code."""
+    res = Struct(x=np.zeros(0), xlabel='', y=np.zeros(0), ylabel='')
+    if 'JSS' in par:
+        jss = int(_num(par, 'JSS'))
+        if jss == 2:
+            dim = int(_num(par, 'RES', '1024')) if 'RES' in par else 1024
+            center, width = _num(par, 'HCF'), _num(par, 'HSW')
+            res.x = center - width / 2 + width / (dim - 1) * np.arange(dim)
+            res.xlabel = 'Magnetic field, Gs'
+        elif jss == 32:
+            dim = int(_num(par, 'XPLS'))
+            val = [float(v) for v in str(par.get('XPD9', '')).replace(',', ' ').split()]
+            step = val[5] * 8 if len(val) > 5 else 1.0
+            res.x = step * np.arange(dim)
+            res.xlabel = 'Time, ns'
+        else:
+            key = next((k for k in ('RES', 'FRES', 'XPLS') if k in par), None)
+            dim = int(_num(par, key)) if key else 1024
+            if 'GST' in par:
+                wd = _num(par, 'GSI')
+                cf = _num(par, 'GST') + wd / 2
+            else:
+                cf = _num(par, 'HCF')
+                wd = _num(par, 'HSW') if 'HSW' in par else abs(cf - _num(par, 'GST')) * 2
+            res.x = cf - wd / 2 + wd / (dim - 1) * np.arange(dim)
+            res.xlabel = f"{par.get('JEX', '?')}, {par.get('JUN', '?')}"
+    if 'MF' in par:
+        res.freq1 = _num(par, 'MF') * 1e9
+    return res
+
+
+def brukerread_jss(filename):
+    """Port of ``kv3_brukerreadJSS``: ESP data as big-endian int32 with JSS axes."""
+    p = Path(filename)
+    if p.suffix.upper() in ('.DSC', '.DTA'):
+        dscname, fname = _sibling(p, '.dsc'), _sibling(p, '.dta')
+    else:
+        dscname, fname = _sibling(p, '.par'), _sibling(p, '.spc')
+    y = np.fromfile(fname, '>i4').astype(float).reshape(-1, 1)
+    dsc = read_dsc(dscname)
+    dsc.KAZANformat = 'BRUKERJSSDSC'
+    ax = _jss_axis(dsc)
+    if len(ax.x) != y.shape[0]:
+        ax.x = np.arange(1.0, y.shape[0] + 1)
+    ax.y = np.array([1.0])
+    ax.unit = 'a.u.'
+    return ax, y, dsc
