@@ -956,7 +956,11 @@ class KazanViewer(QMainWindow):
                          (ref.ax.x, ref.ax.xlabel))
             vals = np.ravel(vals)
             v = vals[min(self.view.position, len(vals) - 1)] if len(vals) else self.view.position + 1
-            self.lSlice.setText(f'{lab}: {v:g}  [{self.view.position + 1}/{n}]')
+            names = ref.ax.get('streams') if self.view.abscissa == 1 else None
+            if names and self.view.position < len(names):     # SpecMan 'All streams'
+                self.lSlice.setText(f'{names[self.view.position]}  [{self.view.position + 1}/{n}]')
+            else:
+                self.lSlice.setText(f'{lab}: {v:g}  [{self.view.position + 1}/{n}]')
         else:
             self.lSlice.setText('')
 

@@ -110,6 +110,33 @@ def _sm_time(par: Struct):
     return vec(t0), vec(t1), (t1 - t0).total_seconds() / 60.0
 
 
+#: SpecMan loader option 'Streams' (label, value)
+STREAM_MODES = [('Re + i Im', 'complex'), ('All streams (2D)', 'all')]
+
+
+def stream_names(transient: str, aquisition: dict) -> list[str]:
+    """Names of the acquired streams: the variables of the transient axis
+    ('T,2048,1,a,b,...') with their acquisition channel ('a = ;a;C1_H1I@LIN' ->
+    'C1_H1I'), e.g. ['a: C1_H1I', 'b: C1_H2I', ...]."""
+    names = []
+    for var in _split_sweep(transient)[3] if transient else []:
+        var = var.strip()
+        chan = str(aquisition.get(var, '')).split(';')
+        chan = chan[2].split('@')[0].strip() if len(chan) > 2 else ''
+        names.append(f'{var}: {chan}' if chan else var)
+    return names
+
+
+def all_streams(ax: Struct, raw: np.ndarray, names: list[str]) -> np.ndarray:
+    """Loader option 'All streams (2D)': every stream as a real trace, (points x
+    streams) for 1D experiments; ax.y numbers the streams, ax.streams names them."""
+    n, m, k = raw.shape
+    ax.y = np.arange(1.0, k + 1)
+    ax.ylabel = 'Stream, #'
+    ax.streams = names if len(names) == k else [f'stream {i + 1}' for i in range(k)]
+    return raw[:, 0, :] if m == 1 else raw.reshape((n, m * k), order='F')
+
+
 def _split_sweep(s: str):
     """'X,341,1,Field' -> type, dim, reps, [vars] (MATLAB strtok semantics)."""
     parts = [p for p in s.split(',') if p != '']
@@ -179,8 +206,9 @@ def specman_par(par: Struct) -> Struct:
     return res
 
 
-def d01read(filename):
-    """Port of ``kv3_d01read``: ``ax, y, dsc`` from ``name.d01`` + ``name.exp``."""
+def d01read(filename, streams: str = 'complex'):
+    """Port of ``kv3_d01read``: ``ax, y, dsc`` from ``name.d01`` + ``name.exp``.
+    ``streams='all'``: every stream as a real trace (see :func:`all_streams`)."""
     p = Path(filename)
     fname, dscname = p.with_suffix('.d01'), p.with_suffix('.exp')
     b = fname.read_bytes()
@@ -234,6 +262,9 @@ def d01read(filename):
     ax.RepTime = getvalue(dsc.get('params_RepTime', '1 us'))[0]
     ax.unit = dsc.get('streams_units', '').split(',')[0].strip() or 'a.u.'
     scans = getvalue(dsc.get('streams_scans', '1,1,1,1'))[0]
+    if streams == 'all' and ax.get('raw') is not None:
+        aq = {k[len('aquisition_'):]: v for k, v in dsc.items() if k.startswith('aquisition_')}
+        spec = all_streams(ax, ax.raw, stream_names(dsc.get('sweep_transient', ''), aq))
     if scans and scans == scans:   # 0 / missing scans: leave the data unscaled
         spec = spec / scans
     dsc.KAZANformat = 'SPECMAND01'
@@ -456,7 +487,10 @@ def specman_tdms_par(tdms: Struct) -> Struct:
                     break
         arr = arr[:asize]
         res[labels[counter]] = arr
-        res[labels[counter] + 'label'] = f'{sa.var[0] if sa.var else pname}, {label_unit or unit}'
+        # the variables of a T axis are stream names, not a quantity (MATLAB used the
+        # first one, which gave labels like 'a, s')
+        name = 'Time' if sa.t == 'T' else (sa.var[0] if sa.var else pname)
+        res[labels[counter] + 'label'] = f'{name}, {label_unit or unit}'
         counter += 1
     res.StartTime = root.get('starttime')
     res.FinishTime = root.get('finishtime')
@@ -465,27 +499,36 @@ def specman_tdms_par(tdms: Struct) -> Struct:
     return res
 
 
-def smtdmsread(filename):
-    """Port of ``kv3_smtdmsread``: ``ax, y, dsc`` from a SpecMan4EPR .tdms file."""
+def smtdmsread(filename, streams: str = 'complex'):
+    """Port of ``kv3_smtdmsread``: ``ax, y, dsc`` from a SpecMan4EPR .tdms file.
+    ``ax.raw`` holds all streams as (points x slices x streams), the ``.d01`` layout
+    (MATLAB: a cell array). ``streams='all'``: every stream as a real trace."""
     tdms = load_tdms(filename)
-    streams = tdms.get('streams')
-    if not streams or 'Re' not in streams:
+    tdms_streams = tdms.get('streams')
+    if not tdms_streams or 'Re' not in tdms_streams:
         raise ValueError('No SpecMan streams in this TDMS file')
-    re_, ok_re = _stream_to_array(streams.Re)
-    im_, ok_im = _stream_to_array(streams.Im) if 'Im' in streams else (np.zeros_like(re_), True)
+    re_, ok_re = _stream_to_array(tdms_streams.Re)
+    im_, ok_im = (_stream_to_array(tdms_streams.Im) if 'Im' in tdms_streams
+                  else (np.zeros_like(re_), True))
     spec = re_ + 1j * im_
     ax = specman_tdms_par(tdms)
     if not ax.get('ylabel'):
         ax.ylabel = 'Intensity'
-    channel_names = [k for k, v in streams.items() if isinstance(v, Struct) and 'data' in v]
-    ax.raw = [_stream_to_array(streams[k])[0] for k in channel_names]
+    channel_names = [k for k, v in tdms_streams.items() if isinstance(v, Struct) and 'data' in v]
+    n = spec.shape[0]
+    ax.raw = np.stack([_stream_to_array(tdms_streams[k])[0].reshape((n, -1), order='F')
+                       for k in channel_names], axis=2)
+    if streams == 'all':
+        names = stream_names(str((tdms.get('axis') or {}).get('transient', '')),
+                             tdms.get('aquisition') or {})
+        spec = all_streams(ax, ax.raw, names)
     x = ax.get('x')
     if x is None or len(x) != spec.shape[0]:
         ax.x = np.arange(1.0, spec.shape[0] + 1)
     ax.type = 'data'
     if 'freq1' in tdms.root:
         ax.freq1 = getvalue(tdms.root.freq1)[0]
-    ax.unit = streams.Re.get('unit') or 'a.u.'
+    ax.unit = tdms_streams.Re.get('unit') or 'a.u.'
 
     # dsc = root properties + flattened sections, as MATLAB 'case 2'
     dsc = Struct(tdms.root)

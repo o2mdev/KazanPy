@@ -60,6 +60,9 @@ OPTIONS: dict[str, list[LoadOption]] = {
                 LoadOption(None, '128 64 1e-6 1e-6 0', 'xsize ysize [xdwell ydwell cfreq]')],
     'RMN_2D': [LoadOption(nmr.RMN2D_TYPES, '2DTT', 'Axis types'),
                LoadOption([('Not used', 1)], 1), LoadOption(None, '')],
+    'SpecMan': [LoadOption(specman.STREAM_MODES, 'complex',
+                           'Re + i Im: the first two streams as one complex signal; '
+                           'All streams: every stream as a real trace (2D)')],
     'OPUS_FTIR': [LoadOption(other.OPUS_PARTS, 1, 'Data part'),
                   LoadOption([('Not used', 1)], 1), LoadOption(None, '')],
 }
@@ -84,9 +87,9 @@ LOADERS: dict[tuple, Callable] = {
     (None, 'XEPR'): lambda f, o: bruker.brukerread(f),
     (None, 'XEPR_JSS'): lambda f, o: bruker.brukerread_jss(f),
     (None, 'ASTASHKIN'): lambda f, o: other.astashkin_read(f),
-    ('*.tdms', 'SpecMan'): lambda f, o: specman.smtdmsread(f),
-    ('*.exp', 'SpecMan'): lambda f, o: specman.d01read(f),
-    ('*.d01', 'SpecMan'): lambda f, o: specman.d01read(f),
+    ('*.tdms', 'SpecMan'): lambda f, o: specman.smtdmsread(f, _opt(o, 0, 'complex')),
+    ('*.exp', 'SpecMan'): lambda f, o: specman.d01read(f, _opt(o, 0, 'complex')),
+    ('*.d01', 'SpecMan'): lambda f, o: specman.d01read(f, _opt(o, 0, 'complex')),
     (None, 'SpecManNIST'): lambda f, o: specman.nist_d01read(f),
     (None, 'SpecManFLD'): lambda f, o: specman.d01read_field(f),
     (None, 'SpecManRAW'): lambda f, o: specman.d02read(f),

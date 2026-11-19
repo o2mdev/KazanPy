@@ -49,6 +49,14 @@ because plugins read them (`ax.raw`, `ax.data`, `dsc.RS_Frequency`, ...).
   Kazan Viewer 3.0 writes when saving ASCII restores the axis fields.
 * **ASCII2D** - complex (re, im interleaved) or real values. Text field: `xsize ysize
   [xdwell ydwell cfreq]`. Odd sizes give centred frequency axes, even sizes time axes.
+* **SpecMan** (`.tdms`, `.d01`) - *Streams*:
+  * *Re + i Im* (default, as in Kazan3): the first two streams form one complex signal.
+  * *All streams (2D)*: every stream is a real trace, so the slider steps through them;
+    the label under the plot names the stream and its channel (e.g. `c: C1_H3I`).
+    Use it for files with more than two streams, such as the 10-harmonic CW files,
+    where the second stream is the second harmonic, not the imaginary part.
+
+  All streams are also in `ax.raw` (points x slices x streams) for plugins (CWMH3).
 * **RMN_2D** - axis types: D1 / D2 time or frequency.
 * **OPUS_FTIR** - interferogram, baseline (fft) or data - baseline (fft).
 
@@ -60,6 +68,9 @@ General:
 * Incomplete TDMS scans load, padded with zeros, and a message goes to the log. MATLAB
   failed.
 * A `.d01` file whose header size does not match the data is read as 1D.
+* TDMS: the time axis is labelled `Time, s` (MATLAB took the first stream name, giving
+  `a, s`), and `ax.raw` is an array in the `.d01` layout (MATLAB: a cell array, which
+  CWMH3 could not read).
 * A scan count of 0 leaves the data unscaled.
 * `to` and `step` in parameter values are not taken as units.
 
