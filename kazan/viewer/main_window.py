@@ -9,8 +9,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QEvent, QEventLoop, QObject, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QActionGroup, QFont, QFontMetrics, QIcon, QKeySequence, QShortcut
+import shiboken6
+from PySide6.QtCore import QEvent, QEventLoop, QObject, QSize, Qt, QUrl, Signal
+from PySide6.QtGui import (QAction, QActionGroup, QDesktopServices, QFont, QFontMetrics, QIcon,
+                           QKeySequence, QShortcut)
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog, QSlider,
                                QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
                                QMainWindow, QMenu, QMenuBar, QMessageBox, QPlainTextEdit,
@@ -22,12 +24,14 @@ from ..core.ini import KazanIni
 from ..core.plugin import KazanPlugin, PluginInfo, discover_plugins
 from ..core.processing import process
 from ..io import loaders
+from ..io import writers
 from ..io.ascii import ascii_write
 from ..io.params import parameter_reader
 from . import console, figures
 from .plot import COLOR_ORDER, KazanPlot
 
 RESOURCES = Path(__file__).resolve().parent.parent / 'resources'
+DOCS = Path(__file__).resolve().parents[2] / 'Documentation'
 DEFAULT_PLUGIN_PATH = Path(__file__).resolve().parents[2] / 'plugins'
 
 MATLAB_STYLE = """
@@ -44,6 +48,63 @@ QListWidget::item:selected { background: #c0c0c0; color: black; }
 """
 BASE_FONT = 10   # point size the fixed widget sizes below are designed for
 
+#: Help menu texts (MATLAB KazanViewerHelp), adapted to the Python port
+HELP = {
+    'How to Start': [
+        '1: Load data: select the directory, the file extension and the data type,',
+        '   change the loader options (if present), then click a file',
+        '2: Adjust the view: right-click on the plot, select options',
+        '3: Process the data: start a plugin from the Plugins menu',
+        '4: Copy processed data from Output to Source (<<)',
+        '5: Print the plot: Window > Show in Window, then save it from the figure toolbar'],
+    'Data Load Routines': [
+        'File extensions, data types and loader options are listed in',
+        '    kazan/io/loaders.py   (EXTENSIONS, OPTIONS, LOADERS)',
+        'Common parameters (title, freq1, ...) are read by',
+        '    kazan/io/params.py    (parameter_reader)',
+        '(MATLAB: kv3_ScriptLoad and kv3_ParameterReader)', '',
+        "Developer's corner:",
+        "    ax, y, dsc = loaders.load(filename, '*.dsc', 'XEPR', option_values)",
+        '    loaders.options(subtype)  - the options of a data type', '',
+        'Supported formats: Documentation/loaders.md'],
+    'Axis Data Structure': [
+        'Parameters (fields of ax) that affect visualization:',
+        'title     - data title',
+        'x / y     - 1D axis arrays   REQUIRED',
+        'xlabel / ylabel - axis labels',
+        'Color     - colour of the trace b/g/r/c/m/y/k or [r g b], rgb = 0..1',
+        'LineStyle - style of the line - / : / -. / --',
+        'LineWidth - width of the line 0..inf',
+        'Marker    - style of dots none/./o/x/+/*/s/d/v/^/</>/p/h',
+        'contour   - for 2D plots - contour levels', '',
+        'Plot type related:',
+        'reference - for the ppm plot',
+        'freq1     - for the g-factor plot', '',
+        'Data processing:',
+        'dx, s           - shift of abscissa / ordinate',
+        'diff, ps_mod    - pseudo-modulation parameters, derivative / integral',
+        'filt, tc, pol   - filter rc / mvgaver / savgol, 1..inf, 1..inf', '',
+        'Fields of ax are accessible through the list and the edit field',
+        'above the plot.'],
+    'Plugins': [
+        'Plugins are windows with access to the viewer data. A plugin is a',
+        'KazanPlugin subclass in a .py file in the plugins folder:',
+        "    menu_name = 'MYPLUGIN'      - name in the Plugins menu",
+        '    __init__(self, host, guid)   - initialization',
+        '    file_update(self)            - called when data are loaded', '',
+        'Plugins use:',
+        "    src = self.host.get_data('source')    - data (a copy)",
+        "    src = self.host.get_data('psource')   - processed data",
+        "    self.host.set_data('output', [out])   - set output data",
+        "    font = self.host.get('font')          - font size",
+        "    self.host.set('slice', k)             - change the slice (0-based)", '',
+        'Details: Documentation/plugin-api.md'],
+    'How to Print': [
+        'Select Window > Show in Window: the plot opens in a matplotlib figure.',
+        'Its toolbar zooms and saves the image (PNG, PDF, SVG, ...).', '',
+        'To put several plots on one figure use Window > Plot 1D > Axis k / [r,c].'],
+}
+
 #: open viewers (Window > New Window), kept alive here
 VIEWERS: list = []
 
@@ -55,13 +116,23 @@ class _MenuStyle(QObject):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.style = QStyleFactory.create('Fusion')
+        self._style = None
+
+    def style(self):
+        """The shared Fusion style, owned by this filter (recreated if Qt deleted it)."""
+        if self._style is None or not shiboken6.isValid(self._style):
+            self._style = QStyleFactory.create('Fusion')
+            self._style.setParent(self)
+        return self._style
 
     def eventFilter(self, obj, ev):
-        if (ev.type() == QEvent.Type.Polish and isinstance(obj, (QMenuBar, QMenu))
-                and not obj.property('kzMenuStyle')):
-            obj.setProperty('kzMenuStyle', True)
-            obj.setStyle(self.style)
+        try:
+            if (ev.type() == QEvent.Type.Polish and isinstance(obj, (QMenuBar, QMenu))
+                    and not obj.property('kzMenuStyle')):
+                obj.setProperty('kzMenuStyle', True)
+                obj.setStyle(self.style())
+        except RuntimeError:     # never let a style problem break event delivery
+            pass
         return False
 
 
@@ -461,7 +532,10 @@ class KazanViewer(QMainWindow):
             sm.addAction(text, lambda key=key: self._menu_plot_2d(key))
 
         m = mb.addMenu('Help')
-        m.addAction('How to Start', self._menu_how_to_start)
+        for text in HELP:
+            m.addAction(text, lambda text=text: self._menu_help(text))
+        m.addAction('Documentation', self._menu_documentation)
+        m.addSeparator()
         m.addAction('About Kazan Viewer', lambda: QMessageBox.about(
             self, 'About', 'KAZAN data viewer and plugins\nPython port of Kazan Viewer 3.0\n'
                            'by Boris Epel, 2003-2026'))
@@ -1338,15 +1412,24 @@ class KazanViewer(QMainWindow):
         return d
 
     def _menu_save(self, processed: bool):
+        """MATLAB Save Source: ASCII (txt / dat), SpecMan d01, Bruker dsc / par, WinSIM lmb."""
         d = self._save_data(processed)
-        default = str(Path(d.filename).with_suffix('.txt')) if d.filename else ''
-        fname, _ = QFileDialog.getSaveFileName(self, 'Select file format', default,
-                                               'ASCII files (*.txt);;ASCII files (*.dat)')
+        default = str(Path(d.filename).with_suffix('')) if d.filename else ''
+        filters = [f for f, _ in writers.FORMATS]
+        fname, flt = QFileDialog.getSaveFileName(self, 'Select file format', default,
+                                                 ';;'.join(filters))
         if not fname:
             return
-        ascii_write(fname, d, origin=d.filename or '',
-                    parameters=[n for n, _, _ in self.DATA_PARAMETERS])
-        self.set('log', f'{Path(fname).name} saved')
+        kind = dict(writers.FORMATS).get(flt, 'txt')
+        if not Path(fname).suffix:
+            fname += '.' + kind
+        try:
+            writers.save(fname, d, kind, parameters=[n for n, _, _ in self.DATA_PARAMETERS])
+        except Exception as e:
+            traceback.print_exc()
+            self.set('message', f'Save error: {e}')
+            return
+        self.set('log', f'{Path(fname).name} saved in format "{kind}"')
 
     def _menu_convert_folder(self, ext: str):
         """MATLAB Convert Folder to ASCII: every file of the current extension is loaded
@@ -1460,11 +1543,16 @@ class KazanViewer(QMainWindow):
         self.src = verify(KzData())
         self.src_control_update()
 
-    def _menu_how_to_start(self):
-        QMessageBox.information(self, 'How to Start', '\n'.join([
-            '1: Select a directory (type the path, use Up, or double-click a [folder])',
-            '2: Select the file extension and data type, then click a file',
-            '3: Process the data: start a plugin from the Plugins menu']))
+    def _menu_help(self, text: str):
+        """MATLAB KazanViewerHelp message boxes."""
+        box = QMessageBox(QMessageBox.Icon.Information, text, '\n'.join(HELP[text]), parent=self)
+        box.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        if text in ('Axis Data Structure', 'Data Load Routines', 'Plugins'):
+            box.setStyleSheet('QLabel { font-family: Consolas, monospace; }')
+        box.exec()
+
+    def _menu_documentation(self):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(DOCS)))
 
     # ================================================================ close
     def _log_prepend(self, lines: list[str]):

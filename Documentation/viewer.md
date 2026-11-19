@@ -120,9 +120,20 @@ were loaded.
 
 ## Saving and export
 
-* *File > Save Source* (with or without processing) writes ASCII columns `x, real(y)
-  [, imag(y)]`. A footer (`;--- created by Kazan Viewer 3.0 ---`) keeps the axis labels,
-  the 2D axis, processing and data parameters. The ASCII loader reads it back.
+* *File > Save Source* (with or without processing): pick the format in the file type
+  list of the dialog. Each is read back by the matching data type:
+
+  | Format | Files | Notes |
+  |---|---|---|
+  | ASCII (`.txt`, `.dat`) | one file | columns `x, real(y) [, imag(y)]` and a footer (`;--- created by Kazan Viewer 3.0 ---`) with the axis labels, the 2D axis, processing and data parameters |
+  | SpecMan (`.d01`) | `.d01` + `.exp` | 1D or 2D, complex as a second stream |
+  | Bruker new (`.dsc`) | `.DSC` + `.DTA` | 1D or 2D, big-endian double; a time axis in s is stored in ns |
+  | Bruker old (`.par`) | `.par` + `.spc` | 1D only, WinEPR float format, field axis |
+  | WinSIM (`.lmb`) | `.LMB` | 1D only |
+
+  Differences from MATLAB: `.par` / `.spc` are no longer swapped and hold the real field
+  axis and float data (MATLAB rounded to integers); `.dsc` keeps real data real; `.lmb`
+  holds the data's own field, frequency and date instead of fixed example values.
 * *Convert Folder to ASCII (dat / txt)* loads every file of the selected extension with
   the selected data type and writes `name.dat` / `name.txt` next to it. *Only missing*
   skips files already converted.
@@ -138,6 +149,12 @@ The *Plugins* menu lists every plugin in the `plugins` folder. Each plugin opens
 own window and works on the current source; most of them update when you load another
 file. *Plugins > Reload plugins* picks up changed plugin files, *Arrange plugins* tiles
 the windows, and plugins can be added to the menu's favourites. See [plugins.md](plugins.md).
+
+## Help
+
+*Help* has Kazan3's *How to Start*, *Data Load Routines*, *Axis Data Structure*,
+*Plugins* and *How to Print* notes, adapted to KazanPy. *Documentation* opens this
+folder.
 
 ## Settings
 

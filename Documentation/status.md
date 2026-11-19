@@ -12,8 +12,9 @@
 * Parameter row; zoom, measure and axis buttons.
 * Font: every control, menu and plugin window follows *View > Font*.
 * Grid, minor grid, Aspect Normal / Square / Axis Equal, Select View Area.
-* File: Save Source (ASCII with the Kazan footer), Convert Folder to ASCII, Export /
-  Load Workspace (a Python console).
+* File: Save Source (ASCII, SpecMan `.d01`, Bruker `.dsc` / `.par`, WinSIM `.lmb`),
+  Convert Folder to ASCII, Export / Load Workspace (a Python console).
+* Help menu.
 * Window: New Window, Show in Window, Plot 1D (figures, subplots), Plot 2D (Surf,
   Scatter3, Surface), drawn with matplotlib.
 * Trace styles: Color / LineStyle / LineWidth / Marker, as in SuperPlot.
@@ -33,8 +34,7 @@ DESCRIPTION3, TRANSIENT3, RAPIDSCAN3, NOISE3, CWMH3, ANLPLG3. See [plugins.md](p
 
 ## Not ported yet
 
-* **Viewer**: Save Source writes ASCII only (MATLAB also wrote `.d01`, `.dsc`, `.par`,
-  `.lmb`). The font does not follow the window size as MATLAB's did.
+* **Viewer**: the font does not follow the window size as MATLAB's did.
 * **Loaders**: UofC_bin, UofC_img, WEBMOSS, transient, RMNdat2D (no MATLAB source or
   helpers). See [loaders.md](loaders.md).
 * **Plugins**: SIMPLUGIN3 (needs EasySpin); CWPLUGIN3 LW-Md (unfinished in

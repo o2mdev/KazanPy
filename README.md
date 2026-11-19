@@ -36,6 +36,17 @@ Settings are stored in `%USERPROFILE%\.kazanpy\kazan3.ini` (same format as the M
 `kazan3.ini`, kept separate). `[KazanViewer] plugin_path` overrides the plugin folder
 (default: `plugins\`).
 
+## Tests
+
+```
+.venv\Scripts\pip install -r requirements-dev.txt
+.venv\Scripts\python -m pytest tests
+```
+
+Each script in `tests/scripts` drives the viewer or a plugin in its own process and
+checks the results (fits recover known values, files load and save back, ...). Scripts
+that need the sample data in `C:\Temp` are skipped when it is not there.
+
 ## Layout
 
 | Path | MATLAB counterpart |
@@ -45,6 +56,7 @@ Settings are stored in `%USERPROFILE%\.kazanpy\kazan3.ini` (same format as the M
 | `kazan/core/processing.py` | `Process()` (filt / diff) |
 | `kazan/core/ini.py` | `kv3_inimanage` |
 | `kazan/io/loaders.py` | `kv3_ScriptLoad` and the `kv3_*read` loaders |
+| `kazan/io/writers.py` | `kv3_asciiwrite`, `kv3_d01write`, `kv_brukerwrite`, `kv_LMBwrite` |
 | `kazan/viewer/main_window.py` | `kazan3.mlapp` (also implements the host API) |
 | `kazan/viewer/plot.py` | `haReal` / `haImag` axes, MATLAB-styled pyqtgraph |
 | `kazan/math/` | `kv_autofit`, line shapes, `sinDecoBG` (rapid scan), `fminsearch` / `fminsearchbnd` |
