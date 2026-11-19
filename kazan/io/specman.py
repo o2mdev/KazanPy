@@ -262,9 +262,10 @@ def d01read(filename, streams: str = 'complex'):
     ax.RepTime = getvalue(dsc.get('params_RepTime', '1 us'))[0]
     ax.unit = dsc.get('streams_units', '').split(',')[0].strip() or 'a.u.'
     scans = getvalue(dsc.get('streams_scans', '1,1,1,1'))[0]
+    aq = {k[len('aquisition_'):]: v for k, v in dsc.items() if k.startswith('aquisition_')}
+    ax.raw_names = stream_names(dsc.get('sweep_transient', ''), aq)    # channel of each raw stream
     if streams == 'all' and ax.get('raw') is not None:
-        aq = {k[len('aquisition_'):]: v for k, v in dsc.items() if k.startswith('aquisition_')}
-        spec = all_streams(ax, ax.raw, stream_names(dsc.get('sweep_transient', ''), aq))
+        spec = all_streams(ax, ax.raw, ax.raw_names)
     if scans and scans == scans:   # 0 / missing scans: leave the data unscaled
         spec = spec / scans
     dsc.KAZANformat = 'SPECMAND01'
@@ -518,10 +519,10 @@ def smtdmsread(filename, streams: str = 'complex'):
     n = spec.shape[0]
     ax.raw = np.stack([_stream_to_array(tdms_streams[k])[0].reshape((n, -1), order='F')
                        for k in channel_names], axis=2)
+    ax.raw_names = stream_names(str((tdms.get('axis') or {}).get('transient', '')),
+                                tdms.get('aquisition') or {})       # channel of each raw stream
     if streams == 'all':
-        names = stream_names(str((tdms.get('axis') or {}).get('transient', '')),
-                             tdms.get('aquisition') or {})
-        spec = all_streams(ax, ax.raw, names)
+        spec = all_streams(ax, ax.raw, ax.raw_names)
     x = ax.get('x')
     if x is None or len(x) != spec.shape[0]:
         ax.x = np.arange(1.0, spec.shape[0] + 1)

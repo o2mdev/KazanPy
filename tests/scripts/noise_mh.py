@@ -52,13 +52,18 @@ for k in range(5):
 src = KzData(y=raw[:, :, 0], ax=Struct(x=B + 3350, xlabel='Field, G', y=att, ylabel='Att, dB', raw=raw), dsc=Struct())
 w.set_data('source', src)
 m = launch('CWMH3')
-for mode in ('As Is', 'MH', 'Phases', 'Power saturation'):
+print('info:', m.lInfo.text().splitlines()[0])
+assert m.has_q and m.hs == [1, 2, 3, 4, 5]          # Auto without names = Blocks (Kazan3 layout)
+for mode in ('As Is', 'Harmonics 2D', 'Power saturation'):
     m.DropDown2.setCurrentText(mode); m.CalculateButton.click()
-    print(mode, [(d.title, d.y.shape) for d in w.out], '| msg', w.plot.real.titleLabel.text[:40], '|', m.Reports.toPlainText().replace('\n', ' '))
-m.DropDown2.setCurrentText('Phases'); m.btnUsePhase.setChecked(True)
-print('lin phase', m.Reports.toPlainText(), 'max |imag|/|real|', round(float(np.abs(w.out[0].y.imag).max() / np.abs(w.out[0].y.real).max()), 4))
-m.DropDown2.setCurrentText('As Is')
-for s in ('I Channel 7', 'IQ all'):
-    m.SourceDropDown.setCurrentText(s); print(s, [(d.title, d.y.shape) for d in w.out])
-w.set_data('source', KzData(y=np.ones((10, 1)), ax=Struct(), dsc=Struct())); m.CalculateButton.click(); print('no raw msg:', w.plot.real.titleLabel.text)
+    print(mode, [(d.title, d.y.shape) for d in w.out], '|', m.Reports.toPlainText().replace(chr(10), ' ')[:80])
+assert 'Ps=20.0mW' in m.Reports.toPlainText() and 'e=1.000' in m.Reports.toPlainText()
+for fit in (0, 1):
+    m.ddPhaseFit.setCurrentIndex(fit); m.fit_phase()
+    print('phase fit', m.ddPhaseFit.currentText(), m.PhaseSpinner.value(), m.SlopeSpinner.value())
+    assert abs(m.PhaseSpinner.value() % 180 - 20) < 1 and abs(m.SlopeSpinner.value() - 15) < 1
+m.DropDown2.setCurrentText('Harmonics 2D'); m.CalculateButton.click()
+ratio = float(np.abs(w.out[0].y.imag).max() / np.abs(w.out[0].y.real).max())
+print('phased: max |imag|/|real|', round(ratio, 4)); assert ratio < 0.01
+w.set_data('source', KzData(y=np.ones((10, 1)), ax=Struct(), dsc=Struct())); m._read_source(); print('no channels:', m.lInfo.text())
 m.grab().save(str(S/'cwmh_plugin.png')); m.close(); app.processEvents(); w.close(); print('OK')

@@ -304,35 +304,60 @@ Differences from MATLAB:
 
 ## CWMH3
 
-For SpecMan CW data recorded with 10 channels (`ax.raw`): channels 1-5 are the I (real)
-parts of harmonics 1-5, channels 6-10 the Q (imaginary) parts. Choose a mode at the
-bottom left and press **Calculate**. Changing *Source*, *Phase* or *Use* recalculates.
+Multiharmonic CW: the lock-in harmonics of a SpecMan CW file (`ax.raw`, channel names in
+`ax.raw_names`). Reworked from Kazan3's CWMH3 for 10- and 20-harmonic acquisition, with
+the algorithms of the SpecMan *multiharmonic* skill (`kazan/math/multiharmonic.py`).
 
-* **As Is** - the channels chosen in *Source*: I and Q of one harmonic, a single
-  channel, or *IQ all* (the five harmonics side by side). With *Use*, the *Phase* is
-  applied.
-* **MH** - the five harmonics as separate traces, each with its offset (mean of the first
-  5 points) subtracted.
-* **Phases** - the five harmonics as one 2D set.
-* **Power saturation** - the peak-to-peak amplitude of every trace (points 256-768)
-  against microwave power: reference 20 dBm minus the attenuation in `ax.y`. A
-  saturation curve `A sqrt(P) / (1 + P/Ps)^e` is fitted, and `Ps` and `e` are reported.
+**Source**
 
-In *MH* and *Phases*, *Use* fits a phase that is linear in the harmonic number and
-reports it as `step*(x-1) + phase0`. Phases are only defined modulo 180 deg.
+* **Layout** - how the channels map to harmonics:
+  * *Auto (channel names)* - from the names (`C1_H3I`, `C1_H3Q`, ...); input 1. Without
+    names, *Blocks*.
+  * *Harmonics [1, 2, ...]* - every channel is the in-phase signal of the next harmonic
+    (LinMode `CH1:I10`, the 20-harmonic RS board).
+  * *Pairs [1r, 1i, 2r, 2i, ...]* - I and Q of each harmonic in turn (`CH1-IQ5`).
+  * *Blocks [1r, 2r, ..., 1i, 2i, ...]* - all I, then all Q (Kazan3's CWMH3 layout).
+* Files without lock-in channels (ASCII columns, *All streams* data, ...): the source
+  columns are the channels; complex columns give re, im pairs (use *Pairs*).
+* **Harmonics** - the set used: `1-10`, `1,3,5`; empty = all. **slice** - which slice of
+  2D data (e.g. an image projection).
+* The info line shows what was found and the lock-in settings in the file.
 
-The step buttons set the *Phase* spinner step.
+**Phase** - harmonic h is rotated by `Phase + Slope (h - 1)` deg when **Use** is on (needs
+I and Q). **Fit** finds Phase and Slope, by *principal axis* (the angle of each harmonic's
+I/Q cloud, then a line mod 180 weighted by SNR^2; SpecMan skill) or *min. imaginary*
+(Kazan3). With I only, the phases must be right on the instrument: a wrong phase scales or
+flips a harmonic and cannot be corrected afterwards.
 
-Differences from MATLAB:
+**Mode**
 
-* Single-channel sources (*I Channel 6..10*) and *IQ all* work. MATLAB failed: the Q
-  channel was undefined, and *IQ all* had no case.
-* *MH* subtracts the offset per trace. The fitted phase goes to the report box instead of
-  the MATLAB command window.
-* The phase search cost is normalised by the signal power, so the optimiser does not stop
-  at the start for weak signals.
-* The power-saturation window is limited to the data length.
-* The window is titled *CWMH*. The phase toggle is labelled *Use* (it was *Button*).
+* **As Is** - the selected harmonics as separate traces (edge baseline removed); the report
+  gives each harmonic's SNR (p-p / rms of the 15 % edges).
+* **Harmonics 2D** - the harmonics as one 2D set; the viewer slider steps through them.
+* **MH reconstruction** - the absorption from all harmonics (Kalin, Gromov, Schweiger,
+  JMR 160, 166 (2003)): in the Fourier domain each harmonic is the absorption times
+  `2 i^h J_h(k Bm/2)`; the harmonics are combined by noise-weighted least squares (`mu`:
+  Tikhonov term; features broader than about Bm/sqrt(mu) are lost). **Show**: the
+  absorption, the pseudo 1st harmonic at *Bm out* (what a small-modulation measurement
+  would give, without overmodulation), pseudo vs measured H1, or the harmonics with the
+  model. The report gives the absorption and pseudo-H1 SNR, the band limit (narrower
+  lines are smoothed) and per harmonic SNR, weight and residual/noise, with warnings.
+* **MH joint fit** - one Voigt (or Lorentzian) line fitted to all harmonics at once with
+  Bm free: position, Lorentz and Gauss widths, dBpp, Bm (a modulation calibration). Bm is
+  defined only for Bm >= ~2 dBpp; several lines need another model (warned in the report).
+* **Power saturation** - peak-to-peak of the first selected harmonic for every slice
+  against microwave power (reference 20 dBm minus the attenuation in `ax.y`), with the fit
+  `A sqrt(P) / (1 + P/Ps)^e` (in log space, so amplitudes of any size fit).
+
+The field axis is the source X axis when it is a field; otherwise the lock-in sweep
+(`ScanAmplitude`, bin centres, sweep centre = 0). **Bm** starts at the file's
+`ModAmplitude` and must be the true field (calibrated CCmod). The absorption must vanish
+on the 15 % edges: every line +- (Bm/2 + 5 widths) inside the sweep.
+
+Differences from Kazan3's CWMH3: the layouts are selectable (Kazan3 assumed *Blocks* with
+5 harmonics), any number of harmonics, the two MH methods, both phase fits, and the
+power-saturation fit in log space. The old *MH* and *Phases* modes are *As Is* and
+*Harmonics 2D*.
 
 ## ANLPLG3
 
