@@ -15,7 +15,7 @@
 * `ax.dx` / `ax.dy` axis corrections applied when plotting, as in MATLAB `getplotaxis`.
 
 **Plugins**: SYMMETRIZE, CWPLUGIN3, FITPLUGIN3, MATHPLUGIN3, COMPBOX3, MINUSBOX3,
-DESCRIPTION3, TRANSIENT3, RAPIDSCAN3. See [plugins.md](plugins.md).
+DESCRIPTION3, TRANSIENT3, RAPIDSCAN3, NOISE3, CWMH3. See [plugins.md](plugins.md).
 
 **Loaders**: see [loaders.md](loaders.md).
 
@@ -24,5 +24,5 @@ DESCRIPTION3, TRANSIENT3, RAPIDSCAN3. See [plugins.md](plugins.md).
 * **Viewer**: RC filter, pseudo-modulation, parameter locking, X/Y axis representation
   menus, ESP pulse (JSS 32) axes.
 * **Loaders**: ASCII2D, RMN, NIST, SpecManFLD / RAW and others; loader options.
-* **Plugins**: ANLPLG3, CWMH3, NOISE3, SIMPLUGIN3; CWPLUGIN3 LW-Md (unfinished in
+* **Plugins**: ANLPLG3, SIMPLUGIN3; CWPLUGIN3 LW-Md (unfinished in
   MATLAB).

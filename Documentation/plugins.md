@@ -16,6 +16,8 @@ that were fixed.
 - [DESCRIPTION3](#description3) - file description and pulse sequence
 - [TRANSIENT3](#transient3) - 2D transients
 - [RAPIDSCAN3](#rapidscan3) - rapid scan
+- [NOISE3](#noise3) - signal, noise and SNR
+- [CWMH3](#cwmh3) - multi-harmonic CW
 
 ---
 
@@ -263,3 +265,65 @@ Differences from MATLAB:
   label.
 * The `aliases_RS*` and Denver parameter branches referred to an undefined variable and
   failed; they work now.
+
+## NOISE3
+
+Signal amplitude, noise and signal-to-noise ratio of the source. They are reported for
+the real part, the imaginary part, and every extra SpecMan channel (`ax.data`), in that
+order, separated by `|`. The signal is the peak-to-peak amplitude in mV; the noise is the
+standard deviation in uV (the data are taken to be in volts).
+
+* **Set Reference** stores the current source. When a reference of the same size is set,
+  the noise is the source minus the reference, and the signal is the reference. *Clear
+  Ref* removes it.
+* **Signal** processing: *No fit*, *Sinus fit* (a fitted sinusoid is subtracted), or
+  *Mov.average* over 7 to 51 points.
+* **Noise** processing: *As is / Ref*, *Sinus fit*, *- Trace2* (trace 2 subtracted from
+  every trace, for 2D data), *LP Filter 0.5* or *HP Filter 0.75* (FFT filters).
+* **Range** - the part of each trace used for the noise: all, or the last 95 / 90 / 80 /
+  20 %.
+* **Calculate** shows the signal (blue) and the noise in the chosen range (red).
+  *Update* recalculates when a file is loaded.
+
+Differences from MATLAB:
+
+* *Mov.average x7* and *x11* were swapped.
+* *Sinus fit* and *- Trace2* had no effect in MATLAB: they changed copies of the data
+  that were not used afterwards. They work now. The sinus fit starts from the strongest
+  FFT frequency; MATLAB assumed 5 periods per trace and needed a second trace.
+* The noise uses the chosen range of every trace. MATLAB used the first trace only.
+  2D data report the mean amplitude over the traces.
+* *Set Reference* and *Clear Ref* report in the text box. MATLAB wrote to a missing label
+  and failed.
+
+## CWMH3
+
+For SpecMan CW data recorded with 10 channels (`ax.raw`): channels 1-5 are the I (real)
+parts of harmonics 1-5, channels 6-10 the Q (imaginary) parts. Choose a mode at the
+bottom left and press **Calculate**. Changing *Source*, *Phase* or *Use* recalculates.
+
+* **As Is** - the channels chosen in *Source*: I and Q of one harmonic, a single
+  channel, or *IQ all* (the five harmonics side by side). With *Use*, the *Phase* is
+  applied.
+* **MH** - the five harmonics as separate traces, each with its offset (mean of the first
+  5 points) subtracted.
+* **Phases** - the five harmonics as one 2D set.
+* **Power saturation** - the peak-to-peak amplitude of every trace (points 256-768)
+  against microwave power: reference 20 dBm minus the attenuation in `ax.y`. A
+  saturation curve `A sqrt(P) / (1 + P/Ps)^e` is fitted, and `Ps` and `e` are reported.
+
+In *MH* and *Phases*, *Use* fits a phase that is linear in the harmonic number and
+reports it as `step*(x-1) + phase0`. Phases are only defined modulo 180 deg.
+
+The step buttons set the *Phase* spinner step.
+
+Differences from MATLAB:
+
+* Single-channel sources (*I Channel 6..10*) and *IQ all* work. MATLAB failed: the Q
+  channel was undefined, and *IQ all* had no case.
+* *MH* subtracts the offset per trace. The fitted phase goes to the report box instead of
+  the MATLAB command window.
+* The phase search cost is normalised by the signal power, so the optimiser does not stop
+  at the start for weak signals.
+* The power-saturation window is limited to the data length.
+* The window is titled *CWMH*. The phase toggle is labelled *Use* (it was *Button*).
