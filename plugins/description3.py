@@ -3,7 +3,7 @@
 Lists the source description (``dsc``) fields; *Sequence* draws the pulse sequence of
 Bruker XEPR (``Psd1..36``) or ESP (``XPD1..16``) files in a separate window.
 
-Differences from MATLAB (see README):
+Differences from MATLAB (see Documentation/plugins.md):
 * Values are printed as ``name   value`` (MATLAB's sprintf printed numeric values as
   characters).
 * Each channel of the sequence plot has one colour (MATLAB cycled colours per segment),

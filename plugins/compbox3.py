@@ -5,7 +5,7 @@ each with its own colour, X/Y shift, X/Y zoom (linear or dB) and sign. Processin
 normalisation, fit to the first trace, waterfall, join traces into 2D, ungroup 2D,
 sort, add all.
 
-Differences from MATLAB (see README):
+Differences from MATLAB (see Documentation/plugins.md):
 * *Join Traces*, *Ungroup Data*, *Add Current To Output* and *Normalize Current 2D*
   work (in MATLAB they called undefined functions/fields and failed).
 * *Add All* and *Join Traces* also apply Zoom X and dB zoom, as the plot does.

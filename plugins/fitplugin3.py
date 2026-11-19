@@ -4,7 +4,7 @@ Fits a user script (``f = a*exp(-x/t)``, ``a = 1``, ``t = 2e-6``) to the current
 or, with *Fit -> Fit All*, a separate script per slice. Source (blue or chosen
 colour), ignored points (grey dots), fit (red) and difference (green) go to Output.
 
-Differences from MATLAB (see README):
+Differences from MATLAB (see Documentation/plugins.md):
 * *Fit Function ...* opens a plain script editor (MATLAB used the external
   ``fittingbox_func`` dialog, not part of Kazan3).
 * Single-slice mode plots the current viewer slice with its fit (MATLAB fitted the

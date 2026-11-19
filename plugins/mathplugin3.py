@@ -6,7 +6,7 @@ transpose, sum over the 2nd dimension, zero- and first-order phase.
 
 Indices in the plugin are 1-based, as in MATLAB (they are shown to the user).
 
-Differences from MATLAB (see README):
+Differences from MATLAB (see Documentation/plugins.md):
 * The point ranges start as the full data (MATLAB set them to 1..1 when the limits
   were applied, so *Cut Data* first showed a single point).
 * The 2nd-dimension expression accepts MATLAB index syntax only (``[5,8,9]``,

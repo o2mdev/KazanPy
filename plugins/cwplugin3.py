@@ -3,7 +3,7 @@
 Baseline (step 1), phase (step 2) and filter (step 3) processing of a CW trace,
 conversion absorption / derivative / integral, integration and line-width fits.
 
-Differences from MATLAB (see README):
+Differences from MATLAB (see Documentation/plugins.md):
 * 2D data: the current viewer slice is processed (MATLAB assumed 1D data).
 * LW-L / LW-G report the integral of the fitted line (MATLAB printed the start value),
   LW-V fits the selected range only, LWhh uses range indices consistently.

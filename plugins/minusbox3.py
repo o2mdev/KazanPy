@@ -6,7 +6,7 @@ When the abscissas differ, both traces are spline-interpolated on the common ran
 The result can be inverted and shifted along Y. Zoom Y / Shift Y can be set per
 slice of 2D data.
 
-Differences from MATLAB (see README):
+Differences from MATLAB (see Documentation/plugins.md):
 * Shift Y is applied per slice (MATLAB used the first slice's shift for all).
 * *Reset* of the shift sets it to 0 (MATLAB set 1).
 * The current data is always the raw source (MATLAB switched to the processed

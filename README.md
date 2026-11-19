@@ -1,13 +1,25 @@
 # KazanPy
 
-Python port of the MATLAB **Kazan3** EPR data viewer with plugins (`D:\epri\Kazan3`).
-Goal: stay close to the original in controls and appearance.
+KazanPy is a Python port of **Kazan3**, the MATLAB GUI for EPR data processing, with its
+plugins. Goal: stay close to the original in controls and appearance.
+
+Kazan3 descends from the first version, Kazan Viewer:
+
+> Kazan Viewer is a MATLAB GUI for data processing written by Boris Epel and Alexey
+> Silakov. KV is a stand-alone interface but can exchange data with the Matlab shell and
+> number of plug-ins that enhance its basic capabilities. KV is an open-source freeware.
+> We just ask to leave our credits and comments in the text and inform us about useful
+> additions.
+
+The same applies to KazanPy.
 
 ## Run
 
 ```
-.venv\Scripts\python -m kazan
+kazan3.bat
 ```
+
+or `.venv\Scripts\python -m kazan`.
 
 Setup from scratch: `py -3.12 -m venv .venv` then `.venv\Scripts\pip install -r requirements.txt`.
 
@@ -26,81 +38,15 @@ Settings are stored in `%USERPROFILE%\.kazanpy\kazan3.ini` (same format as the M
 | `kazan/io/loaders.py` | `kv3_ScriptLoad` and the `kv3_*read` loaders |
 | `kazan/viewer/main_window.py` | `kazan3.mlapp` (also implements the host API) |
 | `kazan/viewer/plot.py` | `haReal` / `haImag` axes, MATLAB-styled pyqtgraph |
+| `kazan/math/` | `kv_autofit`, line shapes, `sinDecoBG` (rapid scan) |
 | `plugins/*.py` | `*.mlapp` plugins |
 
-## Writing a plugin
+## Documentation
 
-Plugins run in the viewer's process. Drop a `.py` file in `plugins/`; every
-`KazanPlugin` subclass in it appears in the Plugins menu (Plugins > Reload plugins
-picks up changes).
+See [Documentation](Documentation/README.md):
 
-```python
-from kazan.core import KazanPlugin
-
-class MyPlugin(KazanPlugin):
-    menu_name = 'MYPLUGIN'
-
-    def __init__(self, host, guid):
-        super().__init__(host, guid)
-        ...                                  # build the UI
-
-    def file_update(self):                   # MATLAB FileUpdate: new source loaded
-        ...
-
-    def compute(self):
-        d = self.host.get_data('source')     # always a copy
-        out = d.copy(); out.y = ...; out.ax.Color = 'r'; out.title = 'result'
-        self.host.set_data('output', [out])
-```
-
-| MATLAB (`app.KazanViewer.`) | Python (`self.host.`) |
-|---|---|
-| `GetData('source' / 'psource' / 'output')` | `get_data(...)` - returns copies |
-| `SetData('output', out)` / `SetData('source', s)` | `set_data('output', [..])` / `set_data('source', s)` |
-| `Get('font' / 'slice')` | `get(...)` - **slice is 0-based** |
-| `Set('message' / 'log' / 'slice' / 'cursor' / 'font', v)` | `set(...)` |
-| `Ginput(n)` | `ginput(n)` - blocking, returns `(k, 2)` array |
-| `MakePlugins('close', app)` | automatic when the window closes |
-
-Data conventions: `y` is 2-D `(n1, n2)` (a 1-D trace is `(n, 1)`), `ax.x` / `ax.y`
-are 1-D arrays, `ax` and `dsc` are open-ended `Struct`s (`d.ax.Color = 'r'` works;
-missing fields read as `None`). Python objects are shared, not copied: call
-`.copy()` before changing data you did not create.
-
-Keep the host API to plain data (arrays, `KzData`, strings, numbers), so an
-out-of-process (TCP) bridge can be added later without changing plugins.
-
-## Port status
-
-Done: main window layout, directory browser, Source/Output/transfer, Real/Re-Im/Magn,
-1D/Stack/Contour/Density, slice slider, parameter row (data parameters), zoom/measure/axis
-buttons, processing context menu (M.aver., Sav.gol., Integrate), font, grid, favorites
-(plugins and directories), trace styles (Color/LineStyle/LineWidth/Marker as in SuperPlot), orange "on" state for
-all toggle buttons, viewer and plugins (kazan3 `UpdateStateButtons`, [1 0.65 0.2]).
-
-Plugins: SYMMETRIZE, CWPLUGIN3 (baseline/phase/filter, absorption-derivative-integral,
-integral, LW-L/G/V fits, LWhh, LWpp), FITPLUGIN3 (script fitting of one slice or of all
-slices with a script per slice, fit range, function presets, value/function editor),
-MATHPLUGIN3 (part, cut by ranges or MATLAB index expression, transpose, sum, 0/1st-order
-phase), COMPBOX3 (trace comparison: shift/zoom/sign per trace, normalise, fit to first,
-waterfall, join/ungroup, sort, add all), MINUSBOX3 (reference +, -, .*, ./ current data
-with X/Y shift and zoom, per-slice Y zoom/shift, spline on differing axes),
-DESCRIPTION3 (description fields; pulse sequence plot of XEPR `Psd*` / ESP `XPD*`). The viewer applies `ax.dx`/`ax.dy` axis
-corrections when plotting, as MATLAB `getplotaxis`. Shared math in `kazan/math/` (EasySpin-convention
-line shapes, `kv_autofit` port).
-
-Loaders: ASCII; SpecMan `.tdms` (`kazan/io/specman.py`, also reads interleaved TDMS);
-SpecMan `.d01`/`.exp` with `.bip` sidecar; Bruker XEPR `.DSC`/`.DTA` and ESP/WinEPR
-`.par`/`.spc` (`kazan/io/bruker.py`); common parameters (`kazan/io/params.py`).
-Field names in `ax`/`dsc` match MATLAB because plugins read them (`ax.raw`, `ax.data`,
-`dsc.RS_Frequency`, ...).
-
-Deliberate differences from the MATLAB loaders: repeated TDMS scans average all columns
-(MATLAB divided only the last); incomplete TDMS scans load with zeros plus a log message
-(MATLAB failed); a `.d01` header whose declared size does not match is read as 1D; a
-scan count of 0 leaves the data unscaled; `to`/`step` are not taken as units.
-
-Not ported yet: RC filter, pseudo-modulation, loaders other than those above (ASCII2D,
-RMN, NIST, SpecManFLD/RAW, ...), loader options, parameter locking, X/Y axis
-representation menus, ESP pulse (JSS 32) axes, the other 6 plugins, CWPLUGIN3 LW-Md
-(unfinished in MATLAB).
+* [Viewer](Documentation/viewer.md)
+* [Plugins](Documentation/plugins.md): usage, and differences from MATLAB
+* [File formats](Documentation/loaders.md)
+* [Writing a plugin](Documentation/plugin-api.md)
+* [Port status](Documentation/status.md)
