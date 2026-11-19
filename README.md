@@ -3,7 +3,7 @@
 KazanPy is a Python port of **Kazan3**, the MATLAB GUI for EPR data processing, with its
 plugins. Goal: stay close to the original in controls and appearance.
 
-Kazan3 descends from the first version, Kazan Viewer:
+Kazan3 is the successor of the first version, Kazan Viewer:
 
 > Kazan Viewer is a MATLAB GUI for data processing written by Boris Epel and Alexey
 > Silakov. KV is a stand-alone interface but can exchange data with the Matlab shell and
@@ -12,6 +12,15 @@ Kazan3 descends from the first version, Kazan Viewer:
 > additions.
 
 The same applies to KazanPy.
+
+### Related projects
+
+| Project | Language | Repository |
+|---|---|---|
+| Kazan Viewer (KV), the first version | MATLAB | [o2mdev/kazan](https://github.com/o2mdev/kazan) |
+| Kazan Viewer, Silakov lab version | MATLAB | [AlexeySilakov/KazanViewer](https://github.com/AlexeySilakov/KazanViewer) ([Silakov lab software page](https://sites.psu.edu/silakovlab/software)) |
+| Kazan3, the MATLAB App Designer version this port follows | MATLAB | [o2mdev/kazan3](https://github.com/o2mdev/kazan3) |
+| KazanPy, this port | Python | [o2mdev/KazanPy](https://github.com/o2mdev/KazanPy) |
 
 ## Run
 
