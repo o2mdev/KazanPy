@@ -65,6 +65,7 @@ class KazanPlot(pg.GraphicsLayoutWidget):
         self.addItem(self.real, row=0, col=0)
         self._imag_shown = False
         self.font_size = 12
+        self.aspect = 'normal'
         self.scene().sigMouseClicked.connect(self._on_scene_click)
 
     # ------------------------------------------------------------------ style
@@ -95,6 +96,7 @@ class KazanPlot(pg.GraphicsLayoutWidget):
         elif not show and self._imag_shown:
             self.removeItem(self.imag)
         self._imag_shown = show
+        self._fit_aspect()
 
     def clear_plots(self):
         for p in (self.real, self.imag):
@@ -160,9 +162,58 @@ class KazanPlot(pg.GraphicsLayoutWidget):
         for p in (self.real, self.imag):
             p.getViewBox().autoRange(padding=pad)
 
-    def set_grid(self, on: bool):
+    def set_grid(self, on: bool, minor: bool = False):
+        """MATLAB grid on/off; ``minor``: XMinorGrid (minor lines along X only). Grid lines
+        follow the tick levels, so the minor tick level is shown only with the minor grid."""
+        alpha = int(0.25 * 255)
         for p in (self.real, self.imag):
-            p.showGrid(x=on, y=on, alpha=0.25)
+            bottom, left = p.getAxis('bottom'), p.getAxis('left')
+            bottom.setGrid(alpha if (on or minor) else False)
+            bottom.setStyle(maxTickLevel=1 if minor else (0 if on else 2))
+            left.setGrid(alpha if on else False)
+            left.setStyle(maxTickLevel=0 if on else 2)
+            for a in (bottom, left):
+                a.picture = None
+                a.update()
+
+    def set_aspect(self, mode: str):
+        """MATLAB axis normal / square (square plot boxes) / equal (equal data units)."""
+        self.aspect = mode
+        for p in (self.real, self.imag):
+            p.getViewBox().setAspectLocked(mode == 'equal', 1.0)
+        self._fit_aspect()
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._fit_aspect()
+
+    def _fit_aspect(self):
+        """Aspect Square: margins that make the data box (view box) of each axes square."""
+        if not hasattr(self, 'aspect'):      # resizeEvent runs during __init__
+            return
+        mx = my = 0.0
+        if self.aspect == 'square':
+            rows = 2 if self._imag_shown else 1
+            w, h = self.width(), self.height()
+            vb, pi = self.real.getViewBox().size(), self.real.size()
+            ex, ey = max(pi.width() - vb.width(), 0), max(pi.height() - vb.height(), 0)
+            side = max(min(w - ex, h / rows - ey), 10)
+            mx = max((w - side - ex) / 2, 0)
+            my = max((h - rows * (side + ey)) / 2, 0)
+        self.ci.layout.setContentsMargins(mx, my, mx, my)
+
+    def axis_modes(self, item, logx=False, logy=False, invx=False, invy=False):
+        """MATLAB XScale / YScale (log) and XDir / YDir (reverse)."""
+        item.setLogMode(x=logx, y=logy)
+        item.invertX(invx)
+        item.invertY(invy)
+
+    def view_area(self) -> tuple[float, float, float, float]:
+        (x0, x1), (y0, y1) = self.real.getViewBox().viewRange()
+        return x0, x1, y0, y1
+
+    def set_view_area(self, x0, x1, y0, y1):
+        self.real.getViewBox().setRange(xRange=(x0, x1), yRange=(y0, y1), padding=0)
 
     def set_zoom_mode(self, on: bool):
         mode = pg.ViewBox.RectMode if on else pg.ViewBox.PanMode

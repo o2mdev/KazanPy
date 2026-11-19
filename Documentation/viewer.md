@@ -38,9 +38,32 @@ so you can chain processing steps.
   column), *Y* traces along the second axis (one per row). *Tools > Cut Slice* keeps
   the current slice as the new source.
 * Toolbar: **Measure** (cross: read off coordinates), **Zoom**, zoom/expand X and Y.
-* *View* menu: font, view area, zoom, grid and minor grid, aspect ratio.
+* *View* menu:
+  * **Font** - Default or -4 ... +4 points. All controls, menus and plugin windows follow,
+    and button and panel sizes grow with the font. The choice is kept in the ini file.
+  * **Axis Tight / Auto / Manual** - how the range is set when data are plotted.
+    *Select View Area* takes typed limits (`xmin xmax ymin ymax`) and switches to
+    Manual.
+  * **Show Grid**, **Show Minor Grid** (minor lines along X, as in Kazan3).
+  * **Aspect Normal**, **Aspect Square** (square plot boxes), **Axis Equal** (equal
+    units on both axes).
 
 Toggle buttons that are "on" are shown in kazan3's orange.
+
+## Window menu
+
+These draw the current view in separate figures with matplotlib (`pip install matplotlib`).
+Figures have a toolbar to zoom and to save images (PNG, PDF, SVG, ...).
+
+* **New Window** - another viewer.
+* **Show in Window** - the current plot in a new figure.
+* **Plot 1D**:
+  * *Open figure* - a new figure; Re/Im mode gives two axes.
+  * *Empty figure*.
+  * *Axis k / [r,c]* - the plot goes into subplot *k* of an *r* x *c* grid of the current
+    figure (the last one used), so plots can be put side by side.
+* **Plot 2D** - the 2D source as a 3D view: *Surf*, *Scatter3* (points), *Surface* (one
+  coloured line per slice).
 
 ## Parameters
 
@@ -96,8 +119,17 @@ were loaded.
 
 ## Saving and export
 
-*File > Save Source* (with or without processing), *Convert Folder to ASCII* (`.dat` /
-`.txt`).
+* *File > Save Source* (with or without processing) writes ASCII columns `x, real(y)
+  [, imag(y)]`. A footer (`;--- created by Kazan Viewer 3.0 ---`) keeps the axis labels,
+  the 2D axis, processing and data parameters. The ASCII loader reads it back.
+* *Convert Folder to ASCII (dat / txt)* loads every file of the selected extension with
+  the selected data type and writes `name.dat` / `name.txt` next to it. *Only missing*
+  skips files already converted.
+* *Export Src to Workspace* / *Export Out to Workspace* put the source (`exp_src`) or the
+  output traces (`exp_out`, a list) into the workspace. *Load Src from Workspace* makes
+  `exp_src` the source. In place of MATLAB's base workspace, the workspace is a Python
+  namespace with its own console (*File > Workspace Console*). There `exp_src.y`,
+  `exp_src.ax.x`, `np` and `viewer` are available.
 
 ## Plugins
 

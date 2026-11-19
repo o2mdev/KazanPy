@@ -145,3 +145,61 @@ def ascii2d_load(filename: str, sizes: str = '', is_complex: bool = True):
         ax.y = ydwell * np.arange(1, ysize + 1)
     dsc = Struct(ASCII2D='ASCII 2D loader for KAZAN viewer', size=f'{xsize}x{ysize}')
     return ax, y, dsc
+
+
+def ascii_write(filename: str, d, origin: str = '', parameters=None, footer: bool = True):
+    """Port of ``kv3_asciiwrite`` (``usefooter``): columns ``x, real(y) [, imag(y)]`` as
+    MATLAB ``save -ascii`` writes them, then the Kazan Viewer 3.0 footer that
+    :func:`ascii_read` reads back. ``parameters``: data-parameter names written when the
+    axis has them (MATLAB ``DataParameters``)."""
+    y = np.asarray(d.y)
+    if y.ndim == 1:
+        y = y[:, None]
+    yr, yi = np.real(y), np.imag(y)
+    x = np.ravel(d.ax.x)[:, None]
+    p = np.hstack([x, yr, yi] if np.any(yi) else [x, yr])
+    lines = ['   '.join(f'{v:15.8e}' for v in row) for row in p]
+    if footer:
+        ax = d.ax
+        lines.append(';--- created by Kazan Viewer 3.0 ---')
+        lines.append(f'; original: {origin}')
+        for key in ('type', 'xlabel', 'ylabel'):
+            if ax.get(key) is not None:
+                lines.append(f'; ax.{key}: {ax[key]}')
+        ay = ax.get('y')
+        if yr.shape[1] > 1 and ay is not None and np.size(ay) == yr.shape[1]:
+            lines.append('; ax.y: ' + ' '.join(f'{v:.15g}' for v in np.ravel(ay)))
+        if ax.get('filt'):
+            lines.append(f"; ax.filt: {ax.filt}")
+            for key, fmt in (('tc', '{:f}'), ('pol', '{:d}')):
+                if ax.get(key) is not None:
+                    try:
+                        lines.append(f'; ax.{key}: ' + fmt.format(int(ax[key]) if key == 'pol' else float(ax[key])))
+                    except (TypeError, ValueError):
+                        pass
+        if ax.get('diff'):
+            lines.append(f"; ax.diff: {ax['diff']}")
+            if ax.get('ps_mod') is not None:
+                lines.append(f'; ax.ps_mod: {float(ax.ps_mod):f}')
+        for key in ('dx', 'dy', 's'):
+            try:
+                if ax.get(key) is not None:
+                    lines.append(f'; ax.{key}: {float(ax[key]):f}')
+            except (TypeError, ValueError):
+                pass
+        script = getattr(d, 'script', '') or ''
+        if script:
+            lines.append(f'; Script: {script}')
+        for name in parameters or []:
+            v = ax.get(name)
+            if v is None or (isinstance(v, str) and not v) or name in ('xlabel', 'ylabel'):
+                continue
+            if isinstance(v, str):
+                lines.append(f'; {name}: {v}')
+            else:
+                try:
+                    lines.append(f'; {name}: {float(v):f}')
+                except (TypeError, ValueError):
+                    pass
+    with open(filename, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('\n'.join(lines) + '\n')

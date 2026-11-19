@@ -214,10 +214,7 @@ class RapidScan3(KazanPlugin):
             bl.addWidget(b, r, c)
         g.addWidget(box, 8, 0, 2, 2)
         self.pbDeconvolute = QPushButton('Go!')
-        f = self.pbDeconvolute.font()
-        f.setPointSizeF(f.pointSizeF() * 1.6)
-        f.setBold(True)
-        self.pbDeconvolute.setFont(f)
+        self.pbDeconvolute.setProperty('fontScale', 'big')   # 1.6 x the viewer font, bold
         self.pbDeconvolute.setMinimumHeight(40)
         g.addWidget(self.pbDeconvolute, 8, 2)
         self.pbShowScript = QPushButton('Script')

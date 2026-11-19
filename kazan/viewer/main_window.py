@@ -9,11 +9,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QEvent, QEventLoop, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QActionGroup, QFont, QIcon, QKeySequence, QShortcut
+from PySide6.QtCore import QEvent, QEventLoop, QObject, QSize, Qt, Signal
+from PySide6.QtGui import QAction, QActionGroup, QFont, QFontMetrics, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog, QSlider,
                                QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
-                               QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
+                               QMainWindow, QMenu, QMenuBar, QMessageBox, QPlainTextEdit,
+                               QPushButton, QStyleFactory,
                                QScrollBar, QSizePolicy, QVBoxLayout, QWidget)
 
 from ..core.data import KzData, Struct, verify
@@ -21,7 +22,9 @@ from ..core.ini import KazanIni
 from ..core.plugin import KazanPlugin, PluginInfo, discover_plugins
 from ..core.processing import process
 from ..io import loaders
+from ..io.ascii import ascii_write
 from ..io.params import parameter_reader
+from . import console, figures
 from .plot import COLOR_ORDER, KazanPlot
 
 RESOURCES = Path(__file__).resolve().parent.parent / 'resources'
@@ -39,6 +42,35 @@ QPushButton:checked { background: #ffa633; border-color: #c27a1a; }
 QPushButton:checked:hover { border-color: #0078d7; }
 QListWidget::item:selected { background: #c0c0c0; color: black; }
 """
+BASE_FONT = 10   # point size the fixed widget sizes below are designed for
+
+#: open viewers (Window > New Window), kept alive here
+VIEWERS: list = []
+
+
+class _MenuStyle(QObject):
+    """The Windows 11 style draws menu bars and menus in a fixed font, so the Font menu
+    could not scale them; menus of every window (plugins too) get the Fusion style,
+    which follows the font."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.style = QStyleFactory.create('Fusion')
+
+    def eventFilter(self, obj, ev):
+        if (ev.type() == QEvent.Type.Polish and isinstance(obj, (QMenuBar, QMenu))
+                and not obj.property('kzMenuStyle')):
+            obj.setProperty('kzMenuStyle', True)
+            obj.setStyle(self.style)
+        return False
+
+
+def _install_menu_style():
+    app = QApplication.instance()
+    if app is not None and app.property('kzMenuStyle') is None:
+        app.setProperty('kzMenuStyle', True)
+        app._kz_menu_style = _MenuStyle(app)
+        app.installEventFilter(app._kz_menu_style)
 
 
 @dataclass
@@ -51,6 +83,8 @@ class View:
     abscissa: int = 1            # 1: slices are columns (X abscissa), 2: rows (Y abscissa)
     range: str = 'tight'         # 'tight' | 'auto' | 'manual'
     grid: bool = False
+    minor_grid: bool = False     # MATLAB MinAxisGrid (X only)
+    aspect: str = 'normal'       # 'normal' | 'square' | 'equal'
     default_font: int = 12
     font: int = 12
     xtype: str = 'plot'          # 'plot' | 'pnt' | 'semilog' | 'reverse' | 'gspace' | 'ppm' | 'ppm-1'
@@ -94,7 +128,13 @@ class KazanViewer(QMainWindow):
         self.plugins: list[KazanPlugin] = []
         self.plugin_infos: list[PluginInfo] = []
         self.view = View()
-        self.view.default_font = self.view.font = QApplication.font().pointSize()
+        self.view.default_font = QApplication.font().pointSize()
+        try:     # MATLAB ini.KazanViewer.Font
+            self.view.font = int(float(self.ini.get('KazanViewer', 'Font', str(self.view.default_font))))
+        except ValueError:
+            self.view.font = self.view.default_font
+        self.view.font = int(np.clip(self.view.font, self.view.default_font - 4, self.view.default_font + 4))
+        self._scaled: list = []      # (widget, sizes at BASE_FONT), see _scale
         self._message = ''
         self._message_until = 0.0
         self._ginput: dict | None = None
@@ -102,10 +142,12 @@ class KazanViewer(QMainWindow):
 
         self.setWindowTitle('KAZAN3')
         self.setWindowIcon(QIcon(str(RESOURCES / 'pbZoom.png')))
-        QApplication.instance().setStyleSheet(MATLAB_STYLE)   # plugins share the look
         self.resize(1165, 860)
+        _install_menu_style()
         self._build_ui()
         self._build_menus()
+        self._apply_font()
+        VIEWERS.append(self)
 
         self.make_plugins('search')
         self._load_logo()
@@ -121,7 +163,7 @@ class KazanViewer(QMainWindow):
 
         # ---- left: directory browser + results
         left = QWidget()
-        left.setFixedWidth(310)
+        self._scale(left, w=310)
         lv = QVBoxLayout(left)
         lv.setContentsMargins(0, 0, 0, 0)
         self.ePath = QLineEdit()
@@ -135,7 +177,7 @@ class KazanViewer(QMainWindow):
         self.ddDataType = QComboBox()
         self.ddDataType.currentTextChanged.connect(self._on_datatype_changed)
         self.bUp = QPushButton('Up')
-        self.bUp.setFixedWidth(46)
+        self._scale(self.bUp, w=46)
         self.bUp.clicked.connect(lambda: self.load_directory(str(Path(self.ePath.text()).parent)))
         row.addWidget(self.ddDataType, 1)
         row.addWidget(self.ddExt, 1)
@@ -157,7 +199,7 @@ class KazanViewer(QMainWindow):
         lv.addLayout(row)
         lv.addWidget(QLabel('Results'))
         self.TextArea = QPlainTextEdit(readOnly=True)
-        self.TextArea.setFixedHeight(90)
+        self._scale(self.TextArea, h=90)
         lv.addWidget(self.TextArea)
         h.addWidget(left)
         self._on_ext_changed(self.ddExt.currentText())
@@ -172,7 +214,7 @@ class KazanViewer(QMainWindow):
         row1 = QHBoxLayout()
         self.bSource, self.bOutput = QPushButton('Source'), QPushButton('Output')
         self.bTransfer = QPushButton('<<')
-        self.bTransfer.setFixedWidth(30)
+        self._scale(self.bTransfer, w=30)
         self.bTransfer.setToolTip('Transfer an output trace to the source')
         self.bTransfer.clicked.connect(self._on_transfer)
         self._group(row1, [(self.bSource, 1), (self.bTransfer, None), (self.bOutput, 2)],
@@ -191,7 +233,7 @@ class KazanViewer(QMainWindow):
         row2 = QHBoxLayout()
         row2.setSpacing(3)
         self.ddSelParameter = QComboBox()
-        self.ddSelParameter.setMinimumWidth(200)
+        self._scale(self.ddSelParameter, minw=200)
         self.ddSelParameter.currentTextChanged.connect(self._on_parameter_selected)
         self.eParameter = QLineEdit()
         self.eParameter.returnPressed.connect(self._on_parameter_set)
@@ -200,7 +242,7 @@ class KazanViewer(QMainWindow):
             w.customContextMenuRequested.connect(
                 lambda pos, w=w: self._parameter_menu(w.mapToGlobal(pos)))
         bEq = QPushButton('=')
-        bEq.setFixedWidth(26)
+        self._scale(bEq, w=26)
         bEq.setToolTip('Set parameter value')
         bEq.clicked.connect(self._on_parameter_set)
         row2.addWidget(self.ddSelParameter)
@@ -229,7 +271,7 @@ class KazanViewer(QMainWindow):
         prow.addWidget(self.plot, 1)
         # MATLAB sl2Dplot (vertical slider right of the axes) and b2D (slice direction)
         self.slice_col = QWidget()
-        self.slice_col.setFixedWidth(50)
+        self._scale(self.slice_col, w=50)
         sv = QVBoxLayout(self.slice_col)
         sv.setContentsMargins(0, 0, 0, 0)
         self.sl2Dplot = QSlider(Qt.Orientation.Vertical)
@@ -255,8 +297,7 @@ class KazanViewer(QMainWindow):
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc.activated.connect(self._ginput_cancel)
 
-    @staticmethod
-    def _group(layout, buttons, callback) -> dict:
+    def _group(self, layout, buttons, callback) -> dict:
         grp = QButtonGroup(layout)
         grp.setExclusive(True)
         out = {}
@@ -267,27 +308,71 @@ class KazanViewer(QMainWindow):
             if value is None:
                 continue
             b.setCheckable(True)
-            b.setMinimumWidth(64)
+            self._scale(b, minw=64)
             grp.addButton(b)
             b.clicked.connect(lambda _=False, v=value: callback(v))
             out[value] = b
         layout.addLayout(row)
         return out
 
-    @staticmethod
-    def _tool(layout, icon, tip, checkable=False) -> QPushButton:
+    def _tool(self, layout, icon, tip, checkable=False) -> QPushButton:
         b = QPushButton()
         b.setIcon(QIcon(str(RESOURCES / icon)))
-        b.setIconSize(QSize(14, 14))
-        b.setFixedSize(38, 24)
+        self._scale(b, w=38, h=24, icon=14)
         b.setToolTip(tip)
         b.setCheckable(checkable)
         layout.addWidget(b)
         return b
 
+    def _scale(self, widget, **sizes):
+        """Register a fixed size (pixels at BASE_FONT points) that follows the font."""
+        self._scaled.append((widget, sizes))
+        self._apply_sizes(widget, sizes, self.view.font / BASE_FONT)
+
+    @staticmethod
+    def _apply_sizes(widget, sizes, k):
+        px = {n: max(1, round(v * k)) for n, v in sizes.items()}
+        if isinstance(widget, QPushButton) and widget.text() and 'w' in px:
+            f = QFont(QApplication.font())          # never narrower than the text
+            f.setPointSizeF(BASE_FONT * k)
+            px['w'] = max(px['w'], QFontMetrics(f).horizontalAdvance(widget.text())
+                          + 2 * round(8 * k) + 4)
+        if 'w' in px:
+            widget.setFixedWidth(px['w'])
+        if 'h' in px:
+            widget.setFixedHeight(px['h'])
+        if 'minw' in px:
+            widget.setMinimumWidth(px['minw'])
+        if 'icon' in px:
+            widget.setIconSize(QSize(px['icon'], px['icon']))
+
+    def _apply_font(self):
+        """MATLAB UIFigureSizeChanged font part: every control uses the View font. The
+        size goes into the application style sheet (a style sheet masks
+        QApplication.setFont), so plugin windows follow too; fixed sizes scale with it."""
+        pt = self.view.font
+        k = pt / BASE_FONT
+        QApplication.instance().setStyleSheet(
+            MATLAB_STYLE + f'* {{ font-size: {pt}pt; }}\n'
+            f'QPushButton {{ padding: {round(3 * k)}px {round(8 * k)}px; }}\n'
+            f'*[fontScale="big"] {{ font-size: {round(pt * 1.6)}pt; font-weight: bold; }}\n')
+        f = QApplication.font()
+        f.setPointSize(pt)
+        QApplication.setFont(f)
+        for widget, sizes in self._scaled:
+            self._apply_sizes(widget, sizes, k)
+        mb = self.menuBar()      # QMenuBar keeps its item layout until told the font changed
+        QApplication.sendEvent(mb, QEvent(QEvent.Type.FontChange))
+        mb.updateGeometry()
+        self.plot.set_font_size(pt)
+        for a in getattr(self, '_font_actions', {}).values():
+            a.setChecked(False)
+        a = getattr(self, '_font_actions', {}).get(pt - self.view.default_font)
+        if a is not None:
+            a.setChecked(True)
+
     def _build_menus(self):
         mb = self.menuBar()
-        todo = []  # menu items kept for the original look but not ported yet
 
         m = mb.addMenu('File')
         m.addAction('Open Directory', self._menu_open_directory)
@@ -296,37 +381,51 @@ class KazanViewer(QMainWindow):
         m.addSeparator()
         m.addAction('Save Source', lambda: self._menu_save(False))
         m.addAction('Save Source with Processing', lambda: self._menu_save(True))
-        todo += [m.addAction('Convert Folder to ASCII (dat)'),
-                 m.addAction('Convert Folder to ASCII (txt)')]
+        m.addAction('Convert Folder to ASCII (dat)', lambda: self._menu_convert_folder('.dat'))
+        m.addAction('Convert Folder to ASCII (txt)', lambda: self._menu_convert_folder('.txt'))
         m.addSeparator()
-        todo += [m.addAction('Export Src to Workspace'), m.addAction('Export Out to Workspace'),
-                 m.addAction('Load Src from Workspace')]
+        m.addAction('Export Src to Workspace', lambda: self._menu_workspace('export_src'))
+        m.addAction('Export Out to Workspace', lambda: self._menu_workspace('export_out'))
+        m.addAction('Load Src from Workspace', lambda: self._menu_workspace('load_src'))
+        m.addAction('Workspace Console', lambda: self._menu_workspace('console'))
 
         m = mb.addMenu('View')
         fm = m.addMenu('Font')
         g = QActionGroup(self)
+        self._font_actions = {}
         for d in range(-4, 5):
             a = fm.addAction('Default' if d == 0 else f'{d:+d}')
             a.setCheckable(True)
-            a.setChecked(d == 0)
             g.addAction(a)
             a.triggered.connect(lambda _=False, d=d: self.set('font', self.view.default_font + d))
+            self._font_actions[d] = a
         m.addSeparator()
         g = QActionGroup(self)
+        self._range_actions = {}
         for text, mode in (('Axis Tight', 'tight'), ('Axis Auto', 'auto'), ('Axis Manual', 'manual')):
             a = m.addAction(text)
             a.setCheckable(True)
             a.setChecked(mode == self.view.range)
             g.addAction(a)
             a.triggered.connect(lambda _=False, mode=mode: self._set_range(mode))
-        todo.append(m.addAction('Select View Area'))
+            self._range_actions[mode] = a
+        m.addAction('Select View Area', self._menu_select_view_area)
         m.addAction('Zoom', self.bZoom.toggle)
         m.addSeparator()
         a = m.addAction('Show Grid')
         a.setCheckable(True)
         a.toggled.connect(self._set_grid)
-        todo += [m.addAction('Show Minor Grid'), m.addAction('Aspect Normal'),
-                 m.addAction('Aspect Square'), m.addAction('Axis Equal')]
+        a = m.addAction('Show Minor Grid')
+        a.setCheckable(True)
+        a.toggled.connect(self._set_minor_grid)
+        g = QActionGroup(self)
+        for text, mode in (('Aspect Normal', 'normal'), ('Aspect Square', 'square'),
+                           ('Axis Equal', 'equal')):
+            a = m.addAction(text)
+            a.setCheckable(True)
+            a.setChecked(mode == self.view.aspect)
+            g.addAction(a)
+            a.triggered.connect(lambda _=False, mode=mode: self._set_aspect(mode))
         m.addSeparator()
         for text, key, fn in (
                 ('Next File', 'Ctrl+Down', lambda: self._step_file(1)),
@@ -346,17 +445,23 @@ class KazanViewer(QMainWindow):
         self.mPluginsMain = mb.addMenu('Plugins')
 
         m = mb.addMenu('Window')
-        todo += [m.addAction('New Window'), m.addAction('Show in Window'),
-                 m.addAction('Plot 1D'), m.addAction('Plot 2D')]
+        m.addAction('New Window', self._menu_new_window)
+        m.addAction('Show in Window', lambda: self._menu_figure('show'))
+        m.addSeparator()
+        sm = m.addMenu('Plot 1D')
+        for text, key in (('Open figure', 'open'), ('Empty figure', 'empty'),
+                          ('Axis 1 / [1,2]', (1, 2, 1)), ('Axis 2 / [1,2]', (1, 2, 2)),
+                          ('Axis 1 / [2,1]', (2, 1, 1)), ('Axis 2 / [2,1]', (2, 1, 2))):
+            sm.addAction(text, lambda key=key: self._menu_figure(key))
+        sm = m.addMenu('Plot 2D')
+        for text, key in (('Surf', 'surf'), ('Scatter3', 'scatter3'), ('Surface', 'surface')):
+            sm.addAction(text, lambda key=key: self._menu_plot_2d(key))
 
         m = mb.addMenu('Help')
         m.addAction('How to Start', self._menu_how_to_start)
         m.addAction('About Kazan Viewer', lambda: QMessageBox.about(
             self, 'About', 'KAZAN data viewer and plugins\nPython port of Kazan Viewer 3.0\n'
                            'by Boris Epel, 2003-2026'))
-        for a in todo:
-            a.setEnabled(False)
-            a.setToolTip('Not ported yet')
 
     # ================================================================ KazanHost API
     def get_data(self, mode):
@@ -393,10 +498,8 @@ class KazanViewer(QMainWindow):
     def set(self, key, value=None):
         if key == 'font':
             self.view.font = int(value)
-            f = QApplication.font()
-            f.setPointSize(self.view.font)
-            QApplication.setFont(f)      # applies to plugin windows too
-            self.plot.set_font_size(self.view.font)
+            self.ini.set('KazanViewer', 'Font', str(self.view.font))
+            self._apply_font()           # applies to plugin windows too
             self.plot_data()
         elif key == 'slice':
             n = self._n_slices()
@@ -473,11 +576,9 @@ class KazanViewer(QMainWindow):
                 self, f'File size {size / 2 ** 20:10.2f}Mb', 'Do you want to continue reading?')
             if answer != QMessageBox.StandardButton.Yes:
                 return
-        ext, subtype = self.ddExt.currentText(), self.ddDataType.currentText()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            opts = self.load_option_values()
-            ax, y, dsc = loaders.load(filename, ext, subtype, opts)
+            d = self.read_file(filename)
         except Exception as e:
             traceback.print_exc()
             self.set('message', f'Load error: {e}')
@@ -485,24 +586,36 @@ class KazanViewer(QMainWindow):
             return
         finally:
             QApplication.restoreOverrideCursor()
+        if d.dsc.get('KAZANwarning'):
+            self.set('log', d.dsc.KAZANwarning)
+        if getattr(d, '_reduced', False):
+            self.set('log', 'Data dimension is reduced.')
+        self._message_until = 0.0   # a new file replaces any pending message
+        self.ini.set('KazanViewer', 'last_file', filename)
+        self.src = d
+        self.src_control_update()
+
+    def read_file(self, filename: str) -> KzData:
+        """Load a file with the selected data type and options (MATLAB ScriptLoad +
+        eval + ParameterReader('load'))."""
+        ext, subtype = self.ddExt.currentText(), self.ddDataType.currentText()
+        opts = self.load_option_values()
+        ax, y, dsc = loaders.load(filename, ext, subtype, opts)
         ax, dsc = Struct(ax), Struct(dsc)
         y = np.asarray(y)
         while y.ndim > 2 and y.shape[-1] == 1:   # MATLAB size() drops trailing singletons
             y = y[..., 0]
-        if y.ndim > 2:   # MATLAB: data dimension is reduced to 2D
-            self.set('log', 'Data dimension is reduced.')
+        reduced = y.ndim > 2
+        if reduced:   # MATLAB: data dimension is reduced to 2D
             y = y.reshape((y.shape[0], -1), order='F')
             ax.y = np.arange(1.0, y.shape[1] + 1)
         ax = parameter_reader(ax, dsc)
         ax.dx = 0
         ax.Datatype = ext + subtype
-        if dsc.get('KAZANwarning'):
-            self.set('log', dsc.KAZANwarning)
-        self._message_until = 0.0   # a new file replaces any pending message
-        self.ini.set('KazanViewer', 'last_file', filename)
-        self.src = verify(KzData(y=y, ax=ax, dsc=dsc, filename=filename,
-                                 script=f"loaders.load({filename!r}, {ext!r}, {subtype!r}, {opts!r})"))
-        self.src_control_update()
+        d = verify(KzData(y=y, ax=ax, dsc=dsc, filename=filename,
+                          script=f"loaders.load({filename!r}, {ext!r}, {subtype!r}, {opts!r})"))
+        d._reduced = reduced
+        return d
 
     def src_control_update(self):
         """Port of SrcControlUpdate: refresh controls, notify plugins, replot."""
@@ -684,8 +797,10 @@ class KazanViewer(QMainWindow):
             return np.abs(y), None
         return np.real(y), (np.imag(y) if self.view.part == 'reim' else None)
 
-    def _plot_data(self):
-        p = self.plot
+    def _plot_data(self, p=None):
+        """Draw into the viewer plot, or into ``p`` (a figure, MATLAB PlotData(rAxis, iAxis))."""
+        main = p is None
+        p = p or self.plot
         p.clear_plots()
         p.show_imag(self.view.part == 'reim')
         sets = [(d, c) for d, c in self._datasets() if not d.is_empty]
@@ -731,11 +846,17 @@ class KazanViewer(QMainWindow):
         p.set_labels(xlabel, ylabel)
         image = self.view.plot_type in ('Contour', 'Density') and ref.is_2d
         for item in (p.real, p.imag):    # MATLAB SuperPlot XScale / XDir / YScale / YDir
-            item.setLogMode(x=self.view.xtype == 'semilog' and not image,
-                            y=self.view.ytype == 'semilog' and not image)
-            item.invertX(self.view.xtype in ('reverse', 'gspace'))
-            item.invertY(self.view.ytype == 'reverse')
+            if item is not None:
+                p.axis_modes(item, logx=self.view.xtype == 'semilog' and not image,
+                             logy=self.view.ytype == 'semilog' and not image,
+                             invx=self.view.xtype in ('reverse', 'gspace'),
+                             invy=self.view.ytype == 'reverse')
 
+        if not main:
+            src = self.src if self.view.data_src_out == 1 else ref
+            p.set_title(Path(src.filename).name if src.filename else (src.title or ''))
+            p.set_range_mode(self.view.range if self.view.range != 'manual' else 'tight')
+            return
         n = self._n_slices()
         if n > 1 and self.view.plot_type == '1D':
             vals, lab = ((ref.ax.y, ref.ax.ylabel) if self.view.abscissa == 1 else
@@ -1053,11 +1174,35 @@ class KazanViewer(QMainWindow):
 
     def _set_range(self, mode: str):
         self.view.range = mode
+        self._range_actions[mode].setChecked(True)
         self.plot_data()
+
+    def _menu_select_view_area(self):
+        """Type the axis limits; the range becomes manual."""
+        cur = ' '.join(f'{v:g}' for v in self.plot.view_area())
+        text, ok = QInputDialog.getText(self, 'Select View Area', 'xmin xmax ymin ymax', text=cur)
+        if not ok:
+            return
+        try:
+            x0, x1, y0, y1 = [float(v) for v in text.replace(',', ' ').split()]
+        except ValueError:
+            self.set('message', 'Four numbers are needed: xmin xmax ymin ymax')
+            return
+        self._set_range('manual')
+        self.plot.set_view_area(min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1))
 
     def _set_grid(self, on: bool):
         self.view.grid = on
-        self.plot.set_grid(on)
+        self.plot.set_grid(on, self.view.minor_grid)
+
+    def _set_minor_grid(self, on: bool):
+        self.view.minor_grid = on
+        self.plot.set_grid(self.view.grid, on)
+
+    def _set_aspect(self, mode: str):
+        self.view.aspect = mode
+        self.plot.set_aspect(mode)
+        self.plot_data()
 
     def _on_zoom_toggled(self, on: bool):
         if on:
@@ -1167,18 +1312,138 @@ class KazanViewer(QMainWindow):
         if d:
             self.load_directory(d)
 
+    def _save_data(self, processed: bool) -> KzData:
+        """MATLAB ExportSaveConvert (save): dx applied to x, optionally processed."""
+        d = verify(self.src.copy())
+        try:
+            dx = float(d.ax.get('dx') or 0)
+        except (TypeError, ValueError):
+            dx = 0.0
+        d.ax.x = np.asarray(d.ax.x, float) + dx
+        d.ax.dx = 0
+        if processed:
+            d, _ = process(d)
+            d = verify(d)
+        return d
+
     def _menu_save(self, processed: bool):
-        d = self.get_data('psource' if processed else 'source')
-        default = str(Path(d.filename).with_suffix('.dat')) if d.filename else ''
-        fname, _ = QFileDialog.getSaveFileName(self, 'Save Source', default,
-                                               'ASCII (*.dat *.txt)')
+        d = self._save_data(processed)
+        default = str(Path(d.filename).with_suffix('.txt')) if d.filename else ''
+        fname, _ = QFileDialog.getSaveFileName(self, 'Select file format', default,
+                                               'ASCII files (*.txt);;ASCII files (*.dat)')
         if not fname:
             return
-        y = d.y
-        cols = [d.ax.x[:, None]]
-        cols += [y.real, y.imag] if np.iscomplexobj(y) else [y]
-        np.savetxt(fname, np.hstack(cols), fmt='%.10g', delimiter='\t')
-        self.set('log', f'Saved {Path(fname).name}')
+        ascii_write(fname, d, origin=d.filename or '',
+                    parameters=[n for n, _, _ in self.DATA_PARAMETERS])
+        self.set('log', f'{Path(fname).name} saved')
+
+    def _menu_convert_folder(self, ext: str):
+        """MATLAB Convert Folder to ASCII: every file of the current extension is loaded
+        with the current data type and written next to it as ``name.dat`` / ``name.txt``."""
+        box = QMessageBox(QMessageBox.Icon.Question, 'ASCII file conversion',
+                          'Converting all files to ASCII?', parent=self)
+        yes = box.addButton('Yes', QMessageBox.ButtonRole.YesRole)
+        missing = box.addButton('Only missing', QMessageBox.ButtonRole.YesRole)
+        box.addButton('No', QMessageBox.ButtonRole.NoRole)
+        box.exec()
+        if box.clickedButton() not in (yes, missing):
+            return
+        self.convert_folder(ext, only_missing=box.clickedButton() is missing)
+
+    def convert_folder(self, ext: str, only_missing: bool = False) -> int:
+        folder = Path(self.ePath.text())
+        pattern = self.ddExt.currentText()
+        self.set('log_clear')
+        n = 0
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            for f in sorted(folder.iterdir()):
+                if f.is_dir() or not fnmatch.fnmatch(f.name.lower(), pattern.lower()):
+                    continue
+                dest = f.with_suffix(ext)
+                if dest == f or (only_missing and dest.exists()):
+                    continue
+                try:
+                    d = self.read_file(str(f))
+                    ascii_write(str(dest), d, origin=f.name,
+                                parameters=[n_ for n_, _, _ in self.DATA_PARAMETERS])
+                except Exception as e:      # MATLAB: try ... catch, end
+                    print(f'{f.name}: {e}')
+                    continue
+                self.set('log_all', f'{f.stem} -> {ext}')
+                n += 1
+        finally:
+            QApplication.restoreOverrideCursor()
+        return n
+
+    def _menu_workspace(self, what: str):
+        """MATLAB Export Src / Out to Workspace, Load Src from Workspace; the workspace is a
+        Python namespace with its own console (File > Workspace Console)."""
+        con = console.WorkspaceConsole.instance()
+        console.WORKSPACE['viewer'] = self
+        if what == 'export_src':
+            console.assign('exp_src', self.src.copy())
+            con.write("Variable 'exp_src' is created in the workspace\n")
+        elif what == 'export_out':
+            console.assign('exp_out', [d.copy() for d in self.out])
+            con.write(f"Variable 'exp_out' is created in the workspace ({len(self.out)} traces)\n")
+        elif what == 'load_src':
+            v = console.lookup('exp_src')
+            if v is None:
+                con.write("Variable 'exp_src' was not found in the workspace\n")
+            else:
+                if not isinstance(v, KzData):
+                    v = KzData(y=np.asarray(v))
+                self.src = verify(v.copy())
+                self.view.data_src_out = 1
+                self.bSource.setChecked(True)
+                self.src_control_update()
+                con.write("Variable 'exp_src' was loaded from workspace\n")
+        con.show()
+        con.raise_()
+
+    def _menu_new_window(self):
+        w = KazanViewer(plugin_path=self.plugin_path)
+        w.show()
+
+    def _figure_plot(self, fig, real, imag=None):
+        t = figures.MplPlot(real, imag, self.view.font)
+        self._plot_data(t)
+        t.set_grid(self.view.grid, self.view.minor_grid)
+        t.set_aspect(self.view.aspect)
+        fig.canvas.draw_idle()
+        fig.show()
+
+    def _menu_figure(self, key):
+        """MATLAB Window menu: Show in Window, Plot 1D > Open / Empty figure, Axis k / [r,c]
+        (a subplot of the current figure)."""
+        try:
+            plt = figures.pyplot()
+        except ImportError:
+            self.set('message', 'matplotlib is needed for figures: pip install matplotlib')
+            return
+        if key == 'empty':
+            plt.figure().show()
+        elif key == 'show':
+            fig = plt.figure()
+            self._figure_plot(fig, fig.add_subplot())
+        elif key == 'open':
+            fig = plt.figure()
+            if self.view.part == 'reim':
+                self._figure_plot(fig, fig.add_subplot(2, 1, 1), fig.add_subplot(2, 1, 2))
+            else:
+                self._figure_plot(fig, fig.add_subplot())
+        else:
+            fig = plt.gcf()
+            self._figure_plot(fig, plt.subplot(*key))
+
+    def _menu_plot_2d(self, kind: str):
+        if self.src.is_empty:
+            return
+        try:
+            figures.plot_2d(kind, self.src)
+        except ImportError:
+            self.set('message', 'matplotlib is needed for figures: pip install matplotlib')
 
     def _menu_clear_source(self):
         self.src = verify(KzData())
@@ -1196,6 +1461,8 @@ class KazanViewer(QMainWindow):
         self.TextArea.setPlainText('\n'.join(lines) + ('\n' + old if old else ''))
 
     def closeEvent(self, event):
+        if self in VIEWERS:
+            VIEWERS.remove(self)
         self.make_plugins('closeall')
         try:
             self.ini.save()

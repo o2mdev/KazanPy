@@ -10,7 +10,12 @@
 * 2D data: vertical slice slider, X / Y slice direction, mouse wheel and Ctrl+U / Ctrl+D
   slice stepping, Cut Slice, Fix Source Processing.
 * Parameter row; zoom, measure and axis buttons.
-* Font and grid.
+* Font: every control, menu and plugin window follows *View > Font*.
+* Grid, minor grid, Aspect Normal / Square / Axis Equal, Select View Area.
+* File: Save Source (ASCII with the Kazan footer), Convert Folder to ASCII, Export /
+  Load Workspace (a Python console).
+* Window: New Window, Show in Window, Plot 1D (figures, subplots), Plot 2D (Surf,
+  Scatter3, Surface), drawn with matplotlib.
 * Trace styles: Color / LineStyle / LineWidth / Marker, as in SuperPlot.
 * Kazan3's orange "on" state for all toggle buttons (`UpdateStateButtons`, [1 0.65 0.2]).
 * `ax.dx` / `ax.dy` axis corrections applied when plotting, as in MATLAB `getplotaxis`.
@@ -28,8 +33,8 @@ DESCRIPTION3, TRANSIENT3, RAPIDSCAN3, NOISE3, CWMH3, ANLPLG3. See [plugins.md](p
 
 ## Not ported yet
 
-* **Viewer**: the menu items still greyed out (*New Window*, *Show in Window*,
-  *Plot 1D* / *Plot 2D*, *Export ... to Workspace*, *Load Src from Workspace*).
+* **Viewer**: Save Source writes ASCII only (MATLAB also wrote `.d01`, `.dsc`, `.par`,
+  `.lmb`). The font does not follow the window size as MATLAB's did.
 * **Loaders**: UofC_bin, UofC_img, WEBMOSS, transient, RMNdat2D (no MATLAB source or
   helpers). See [loaders.md](loaders.md).
 * **Plugins**: SIMPLUGIN3 (needs EasySpin); CWPLUGIN3 LW-Md (unfinished in
