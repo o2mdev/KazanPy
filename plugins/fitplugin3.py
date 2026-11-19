@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (QColorDialog, QComboBox, QDialog, QDialogButtonBo
                                QWidget)
 
 from kazan.core import KazanPlugin, KzData
+from kazan.viewer.widgets import SciSpinBox
 from kazan.math.autofit import autofit, evaluate_script, tokens, _value
 
 STEPS = ['1e-7', '1e-6', '1e-5', '1e-4', '1e-3', '0.01', '0.1', '1', '10', '100', '1000',
@@ -49,31 +50,6 @@ FUNCTIONS = {
         ('x2,x1,x0', ['f = x.*x*x2 + x*x1 + x0', 'x0 = 0', 'x1 = 0', 'x2 = 0']),
     ],
 }
-
-
-class SciSpinBox(QDoubleSpinBox):
-    """Spinner that keeps full precision and shows %g (MATLAB uispinner)."""
-
-    def __init__(self):
-        super().__init__(decimals=320, minimum=-1e300, maximum=1e300, singleStep=1.0,
-                         keyboardTracking=False)
-
-    def textFromValue(self, v):
-        return f'{v:.6g}'
-
-    def valueFromText(self, text):
-        try:
-            return float(text)
-        except ValueError:
-            return self.value()
-
-    def validate(self, text, pos):
-        from PySide6.QtGui import QValidator
-        try:
-            float(text)
-            return QValidator.State.Acceptable, text, pos
-        except ValueError:
-            return QValidator.State.Intermediate, text, pos
 
 
 def _num2str(v) -> str:

@@ -494,15 +494,29 @@ class KazanViewer(QMainWindow):
             traceback.print_exc()
             self.set('message', 'Plot error, see console')
 
+    @staticmethod
+    def _plot_axis(d: KzData) -> KzData:
+        """Axis corrections ax.dx / ax.dy (MATLAB getplotaxis, linear representation)."""
+        for axis, key in (('x', 'dx'), ('y', 'dy')):
+            try:
+                shift = float(d.ax.get(key) or 0)
+            except (TypeError, ValueError):
+                shift = 0.0
+            if shift and d.ax.get(axis) is not None:
+                d.ax[axis] = np.asarray(d.ax[axis], float) + shift
+            d.ax[key] = 0
+        return d
+
     def _datasets(self) -> list[tuple[KzData, str]]:
         if self.view.data_src_out == 1:
             d, warnings = process(self.src.copy())
             for w in warnings:
                 self.set('log', w)
-            return [(d, 'b')]
+            return [(self._plot_axis(d), 'b')]
         sets = []
         for i, o in enumerate(self.out):
             d, _ = process(o.copy())
+            d = self._plot_axis(d)
             c = o.ax.get('Color')
             if c is None or (isinstance(c, str) and not c):
                 c = COLOR_ORDER[i % len(COLOR_ORDER)]
