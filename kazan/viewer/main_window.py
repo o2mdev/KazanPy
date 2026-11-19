@@ -9,9 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QEventLoop, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QEventLoop, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QActionGroup, QFont, QIcon, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog,
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog, QSlider,
                                QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
                                QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
                                QScrollBar, QSizePolicy, QVBoxLayout, QWidget)
@@ -48,6 +48,7 @@ class View:
     part: str = 'real'           # 'real' | 'reim' | 'magn'
     plot_type: str = '1D'        # '1D' | 'Stack' | 'Contour' | 'Density'
     position: int = 0            # current slice, 0-based
+    abscissa: int = 1            # 1: slices are columns (X abscissa), 2: rows (Y abscissa)
     range: str = 'tight'         # 'tight' | 'auto' | 'manual'
     grid: bool = False
     default_font: int = 12
@@ -223,18 +224,28 @@ class KazanViewer(QMainWindow):
         self.plot.set_font_size(self.view.font)
         self.plot.clicked.connect(self._on_plot_clicked)
         self.plot.contextMenuRequested.connect(self._on_plot_context_menu)
-        rv.addWidget(self.plot, 1)
-
-        self.sl2Dplot = QScrollBar(Qt.Orientation.Horizontal)
+        prow = QHBoxLayout()
+        prow.setSpacing(2)
+        prow.addWidget(self.plot, 1)
+        # MATLAB sl2Dplot (vertical slider right of the axes) and b2D (slice direction)
+        self.slice_col = QWidget()
+        self.slice_col.setFixedWidth(50)
+        sv = QVBoxLayout(self.slice_col)
+        sv.setContentsMargins(0, 0, 0, 0)
+        self.sl2Dplot = QSlider(Qt.Orientation.Vertical)
+        self.sl2Dplot.setTickPosition(QSlider.TickPosition.TicksBothSides)
         self.sl2Dplot.valueChanged.connect(lambda v: self.set('slice', v))
+        sv.addWidget(self.sl2Dplot, 1, Qt.AlignmentFlag.AlignHCenter)
+        self.b2D = QPushButton('X')
+        self.b2D.setToolTip('Slice direction: X - traces along X (columns), Y - along Y (rows)')
+        self.b2D.clicked.connect(self._on_b2d)
+        sv.addWidget(self.b2D)
+        prow.addWidget(self.slice_col)
+        rv.addLayout(prow, 1)
+        self.plot.viewport().installEventFilter(self)   # wheel steps through slices
         self.lSlice = QLabel()
-        srow = QHBoxLayout()
-        srow.addWidget(self.sl2Dplot, 1)
-        srow.addWidget(self.lSlice)
-        self.slice_row = QWidget()
-        self.slice_row.setLayout(srow)
-        srow.setContentsMargins(0, 0, 0, 0)
-        rv.addWidget(self.slice_row)
+        self.lSlice.setAlignment(Qt.AlignmentFlag.AlignRight)
+        rv.addWidget(self.lSlice)
         h.addWidget(right, 1)
 
         self.bSource.setChecked(True)
@@ -320,15 +331,16 @@ class KazanViewer(QMainWindow):
         for text, key, fn in (
                 ('Next File', 'Ctrl+Down', lambda: self._step_file(1)),
                 ('Previous File', 'Ctrl+Up', lambda: self._step_file(-1)),
-                ('Next Slice', 'Ctrl+Right', lambda: self.set('slice', self.view.position + 1)),
-                ('Previous Slice', 'Ctrl+Left', lambda: self.set('slice', self.view.position - 1))):
+                ('Next Slice', 'Ctrl+U;Ctrl+Right', lambda: self.set('slice', self.view.position + 1)),
+                ('Previous Slice', 'Ctrl+D;Ctrl+Left', lambda: self.set('slice', self.view.position - 1))):
             a = m.addAction(text)
-            a.setShortcut(QKeySequence(key))
+            a.setShortcuts([QKeySequence(k) for k in key.split(';')])
             a.triggered.connect(fn)
 
         m = mb.addMenu('Tools')
         m.addAction('Clear Source', self._menu_clear_source)
-        todo += [m.addAction('Fix Source Processing'), m.addAction('Cut Slice')]
+        m.addAction('Fix Source Processing', self._menu_fix_processing)
+        m.addAction('Cut Slice', self._menu_cut_slice)
         m.addAction('Show Load Script', lambda: self.set('log', self.src.script or '(none)'))
 
         self.mPluginsMain = mb.addMenu('Plugins')
@@ -505,19 +517,81 @@ class KazanViewer(QMainWindow):
         self.plot_data()
 
     def _n_slices(self) -> int:
-        n = self.src.y.shape[1] if not self.src.is_empty else 1
-        for d in self.out:
-            n = max(n, d.y.shape[1])
-        return n
+        """Slices along the ordinate (MATLAB UpdateSlider: size(y, OrdinateXorY))."""
+        dim = 1 if self.view.abscissa == 1 else 0
+        sets = [self.src] if self.view.data_src_out == 1 else (self.out or [self.src])
+        return max([d.y.shape[dim] for d in sets if not d.is_empty] or [1])
 
     def update_slider(self):
         n = self._n_slices()
         self.view.position = min(self.view.position, n - 1)
         self.sl2Dplot.blockSignals(True)
         self.sl2Dplot.setRange(0, max(n - 1, 0))
+        step = 1
+        while n / step > 40:
+            step *= 2
+        self.sl2Dplot.setTickInterval(step)
+        self.sl2Dplot.setPageStep(step)
         self.sl2Dplot.setValue(self.view.position)
         self.sl2Dplot.blockSignals(False)
-        self.slice_row.setVisible(n > 1 and self.view.plot_type == '1D')
+        self.slice_col.setVisible(n > 1 or any(d.is_2d for d in [self.src] + self.out))
+        self.b2D.setText('XY'[self.view.abscissa - 1])
+
+    def _on_b2d(self):
+        """MATLAB b2DValueChanged: switch the slice direction of 2D data."""
+        two_d = any(d.is_2d for d in [self.src] + self.out)
+        self.view.abscissa = 1 if (self.view.abscissa == 2 or not two_d) else 2
+        self.view.position = 0
+        self.update_slider()
+        self.plot_data()
+
+    @staticmethod
+    def get_slice(d: KzData, dim: int, sel: int) -> KzData:
+        """MATLAB GetSlice: column ``sel`` (dim 1), or row ``sel`` as a trace along Y (dim 2)."""
+        rs = d.copy()
+        y = np.asarray(d.y)
+        xs = np.ravel(d.ax.get('x', np.arange(1.0, y.shape[0] + 1)))
+        ys = np.ravel(d.ax.get('y', np.arange(1.0, y.shape[1] + 1)))
+        if dim == 1:
+            k = min(sel, y.shape[1] - 1)
+            rs.y = y[:, k:k + 1]
+            rs.ax.y = ys[min(k, len(ys) - 1):][:1]
+        else:
+            k = min(sel, y.shape[0] - 1)
+            rs.y = y[k:k + 1, :].T
+            rs.ax.x = ys
+            rs.ax.y = xs[min(k, len(xs) - 1):][:1]
+            rs.ax.xlabel = d.ax.get('ylabel') or 'a.u.'
+            rs.ax.ylabel = d.ax.get('xlabel') or 'a.u.'
+        return rs
+
+    def eventFilter(self, obj, event):
+        """Mouse wheel over the plot steps through slices (MATLAB WindowScrollWheel),
+        unless Zoom or Measure is active."""
+        if (event.type() == QEvent.Type.Wheel and self._n_slices() > 1
+                and not self.bZoom.isChecked() and not self.bMeasure.isChecked()):
+            dy = event.angleDelta().y()
+            steps = dy // 120 or (1 if dy > 0 else -1)
+            self.set('slice', self.view.position + steps)
+            return True
+        return super().eventFilter(obj, event)
+
+    def _menu_cut_slice(self):
+        """MATLAB mCutSlice: the current slice becomes the source."""
+        if self.src.is_empty:
+            return
+        self.src = verify(self.get_slice(self.src, self.view.abscissa, self.view.position))
+        self.view.abscissa, self.view.position = 1, 0
+        self.src_control_update()
+
+    def _menu_fix_processing(self):
+        """MATLAB mFixSourceProcessing: apply the display processing to the source."""
+        d, warnings = process(self.src.copy())
+        for w in warnings:
+            self.set('log', w)
+        d.ax.filtpar1 = ''
+        self.src = verify(d)
+        self.plot_data()
 
     def _current_target(self) -> KzData | None:
         """Data the processing context menu acts on (MATLAB: src or out{1})."""
@@ -614,7 +688,6 @@ class KazanViewer(QMainWindow):
         p = self.plot
         p.clear_plots()
         p.show_imag(self.view.part == 'reim')
-        self.slice_row.setVisible(self._n_slices() > 1 and self.view.plot_type == '1D')
         sets = [(d, c) for d, c in self._datasets() if not d.is_empty]
         if not sets:
             p.set_title('No data')
@@ -646,12 +719,16 @@ class KazanViewer(QMainWindow):
                         if im is not None:
                             p.line(p.imag, d.ax.x, im[:, k] + k * step, color, **self._style(d))
                 else:
-                    k = min(self.view.position, re.shape[1] - 1)
-                    p.line(p.real, d.ax.x, re[:, k], color, **self._style(d))
-                    if im is not None:
-                        p.line(p.imag, d.ax.x, im[:, k], color, **self._style(d))
+                    t = self.get_slice(d, self.view.abscissa, self.view.position)
+                    tre, tim = self._part(t.y)
+                    p.line(p.real, t.ax.x, tre[:, 0], color, **self._style(d))
+                    if tim is not None:
+                        p.line(p.imag, t.ax.x, tim[:, 0], color, **self._style(d))
             ylabel = ref.ax.get('unit') or 'a.u.'
-        p.set_labels(ref.ax.xlabel, ylabel)
+        xlabel = ref.ax.xlabel
+        if self.view.abscissa == 2 and self.view.plot_type == '1D':
+            xlabel = ref.ax.get('ylabel') or 'a.u.'
+        p.set_labels(xlabel, ylabel)
         image = self.view.plot_type in ('Contour', 'Density') and ref.is_2d
         for item in (p.real, p.imag):    # MATLAB SuperPlot XScale / XDir / YScale / YDir
             item.setLogMode(x=self.view.xtype == 'semilog' and not image,
@@ -659,9 +736,15 @@ class KazanViewer(QMainWindow):
             item.invertX(self.view.xtype in ('reverse', 'gspace'))
             item.invertY(self.view.ytype == 'reverse')
 
-        if ref.is_2d:
-            yv = ref.ax.y[min(self.view.position, len(ref.ax.y) - 1)]
-            self.lSlice.setText(f'{ref.ax.ylabel}: {yv:g}  [{self.view.position + 1}/{len(ref.ax.y)}]')
+        n = self._n_slices()
+        if n > 1 and self.view.plot_type == '1D':
+            vals, lab = ((ref.ax.y, ref.ax.ylabel) if self.view.abscissa == 1 else
+                         (ref.ax.x, ref.ax.xlabel))
+            vals = np.ravel(vals)
+            v = vals[min(self.view.position, len(vals) - 1)] if len(vals) else self.view.position + 1
+            self.lSlice.setText(f'{lab}: {v:g}  [{self.view.position + 1}/{n}]')
+        else:
+            self.lSlice.setText('')
 
         if time.monotonic() < self._message_until:
             p.set_title(self._message)
@@ -937,6 +1020,7 @@ class KazanViewer(QMainWindow):
     # ================================================================ callbacks
     def _on_src_out(self, value: int):
         self.view.data_src_out = value
+        self.update_slider()
         self.plot_data()
 
     def _on_transfer(self):

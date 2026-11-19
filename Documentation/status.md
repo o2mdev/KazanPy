@@ -6,7 +6,9 @@
 
 * Main window layout, directory browser, favourite directories and plugins.
 * Source / Output / transfer.
-* Real / Re-Im / Magn; 1D / Stack / Contour / Density; slice slider.
+* Real / Re-Im / Magn; 1D / Stack / Contour / Density.
+* 2D data: vertical slice slider, X / Y slice direction, mouse wheel and Ctrl+U / Ctrl+D
+  slice stepping, Cut Slice, Fix Source Processing.
 * Parameter row; zoom, measure and axis buttons.
 * Font and grid.
 * Trace styles: Color / LineStyle / LineWidth / Marker, as in SuperPlot.

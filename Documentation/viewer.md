@@ -28,8 +28,15 @@ so you can chain processing steps.
 ## Plot
 
 * **Real / Re/Im / Magn** - real part, real and imaginary parts on two axes, or magnitude.
-* **1D / Stack / Contour / Density** - 2D data as the current slice, a stack of traces,
-  a contour or a density map. The slider selects the slice.
+* **1D / Stack / Contour / Density** - 2D data as one slice, a stack of traces, a
+  contour or a density map.
+* **2D data**: the vertical slider right of the plot selects the slice. The label under
+  the plot shows the slice value and number. To step through slices, use the mouse
+  wheel over the plot (when Zoom and Measure are off), *View > Next Slice* (Ctrl+U or
+  Ctrl+Right) or *Previous Slice* (Ctrl+D or Ctrl+Left). The **X / Y** button under
+  the slider switches the direction: *X* shows traces along the first axis (one per
+  column), *Y* traces along the second axis (one per row). *Tools > Cut Slice* keeps
+  the current slice as the new source.
 * Toolbar: **Measure** (cross: read off coordinates), **Zoom**, zoom/expand X and Y.
 * *View* menu: font, view area, zoom, grid and minor grid, aspect ratio.
 
