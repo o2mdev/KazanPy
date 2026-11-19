@@ -56,6 +56,8 @@ class KazanPlot(pg.GraphicsLayoutWidget):
     contextMenuRequested = Signal(QPoint)
     #: left double-click on the axes (full scale)
     doubleClicked = Signal()
+    #: (x, y) data coordinates of the mouse over the Real axes
+    moved = Signal(float, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -69,6 +71,13 @@ class KazanPlot(pg.GraphicsLayoutWidget):
         self.font_size = 12
         self.aspect = 'normal'
         self.scene().sigMouseClicked.connect(self._on_scene_click)
+        self.scene().sigMouseMoved.connect(self._on_scene_move)
+        # MATLAB crossbar: red dashed lines following the mouse, red squares at clicks
+        pen = pg.mkPen((255, 0, 0), width=1, style=Qt.PenStyle.DashLine)
+        self._vline = pg.InfiniteLine(angle=90, movable=False, pen=pen)
+        self._hline = pg.InfiniteLine(angle=0, movable=False, pen=pen)
+        self._marks = pg.ScatterPlotItem(symbol='s', size=8, pen=pg.mkPen((255, 0, 0)), brush=None)
+        self._crosshair = False
 
     # ------------------------------------------------------------------ style
     def _style(self, p: pg.PlotItem):
@@ -103,6 +112,51 @@ class KazanPlot(pg.GraphicsLayoutWidget):
     def clear_plots(self):
         for p in (self.real, self.imag):
             p.clear()
+        if self._crosshair:      # clear() removed the crosshair items too
+            self._add_crosshair_items()
+
+    # ------------------------------------------------------------------ crosshair
+    def set_crosshair(self, on: bool):
+        """Show the crosshair (MATLAB Measure mode and Ginput)."""
+        if on == self._crosshair:
+            return
+        self._crosshair = on
+        if on:
+            self._vline.hide()
+            self._hline.hide()
+            self._add_crosshair_items()
+        else:
+            for item in (self._vline, self._hline, self._marks):
+                if item.scene() is not None:
+                    self.real.removeItem(item)
+            self._marks.clear()
+
+    def _add_crosshair_items(self):
+        for item in (self._vline, self._hline, self._marks):
+            if item.scene() is None:
+                self.real.addItem(item, ignoreBounds=True)
+
+    def add_mark(self, x: float, y: float):
+        """A red square at a picked point."""
+        self._marks.addPoints([{'pos': (x, y)}])
+
+    def clear_marks(self):
+        self._marks.clear()
+
+    def _on_scene_move(self, pos):
+        vb = self.real.getViewBox()
+        if not vb.sceneBoundingRect().contains(pos):
+            if self._crosshair:
+                self._vline.hide()
+                self._hline.hide()
+            return
+        pt = vb.mapSceneToView(pos)
+        if self._crosshair:
+            self._vline.setPos(pt.x())
+            self._hline.setPos(pt.y())
+            self._vline.show()
+            self._hline.show()
+        self.moved.emit(pt.x(), pt.y())
 
     def set_title(self, text: str):
         self.real.setTitle(f'<b>{text}</b>', size=f'{self.font_size}pt', color='k')

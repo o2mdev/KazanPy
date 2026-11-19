@@ -337,6 +337,7 @@ class KazanViewer(QMainWindow):
         self.plot.set_font_size(self.view.font)
         self.plot.clicked.connect(self._on_plot_clicked)
         self.plot.doubleClicked.connect(self.full_scale)
+        self.plot.moved.connect(self._on_plot_moved)
         self.plot.contextMenuRequested.connect(self._on_plot_context_menu)
         prow = QHBoxLayout()
         prow.setSpacing(2)
@@ -612,6 +613,8 @@ class KazanViewer(QMainWindow):
         loop = QEventLoop()
         self._ginput = {'n': int(n), 'points': [], 'loop': loop}
         self.plot.setCursor(Qt.CursorShape.CrossCursor)
+        self.plot.set_crosshair(True)
+        self.plot.clear_marks()
         self.activateWindow()
         try:
             loop.exec()
@@ -620,6 +623,7 @@ class KazanViewer(QMainWindow):
             self._ginput = None
             self._message_until = 0.0   # the selection prompt is done
             self.plot.unsetCursor()
+            self.plot.set_crosshair(self.bMeasure.isChecked())
         return np.array(pts, dtype=float).reshape(-1, 2)
 
     def plugin_closed(self, plugin):
@@ -1297,16 +1301,64 @@ class KazanViewer(QMainWindow):
     def _on_measure_toggled(self, on: bool):
         if on:
             self.bZoom.setChecked(False)
+        self._measure_points = []
+        if self._ginput is None:
+            self.plot.set_crosshair(on)
+
+    def _g_factor(self, x: float):
+        """g at field x (G or mT) from freq1, or None (MATLAB getGfactor)."""
+        d = self._current_target()
+        if d is None or self.view.xtype == 'gspace':
+            return None
+        try:
+            f = float(d.ax.get('freq1') or 0)
+        except (TypeError, ValueError):
+            return None
+        unit = str(d.ax.get('xlabel') or '').rpartition(',')[2].strip()
+        scale = {'G': 1.0, 'mT': 10.0, 'T': 1e4}.get(unit)
+        if not f or not scale or not x:
+            return None
+        return f / self.GAMMA / (x * scale)
+
+    def _on_plot_moved(self, x: float, y: float):
+        """MATLAB WindowButtonMotion: coordinates (and g) in the title while the crosshair
+        is on and no message is shown."""
+        if not self.plot._crosshair or time.monotonic() < self._message_until:
+            return
+        g = self._g_factor(x)
+        gtext = f' g={g:.5f}' if g else ''
+        n = self._n_slices()
+        dim = f' ({self.view.position + 1})' if n > 1 else ''
+        pts = getattr(self, '_measure_points', [])
+        if self._ginput is None and len(pts) == 1:
+            self.plot.set_title(f'dx= {x - pts[0][0]:g},    dy= {y - pts[0][1]:g}{dim}')
+        else:
+            self.plot.set_title(f'x: {x:.6g}{gtext}  y: {y:.4g}{dim}')
 
     def _on_plot_clicked(self, x: float, y: float):
         if self._ginput is not None:
             g = self._ginput
             g['points'].append((x, y))
+            self.plot.add_mark(x, y)
             self.set('cursor', f'Point {len(g["points"])} of {g["n"]}: x = {x:g}, y = {y:g}')
             if len(g['points']) >= g['n']:
                 g['loop'].quit()
         elif self.bMeasure.isChecked():
-            self.set('cursor', f'x = {x:g}, y = {y:g}')
+            # MATLAB Measure: first click reads x, y (and g); the second gives dx, dy
+            pts = self._measure_points = getattr(self, '_measure_points', [])
+            if len(pts) >= 2:
+                pts.clear()
+                self.plot.clear_marks()
+            pts.append((x, y))
+            self.plot.add_mark(x, y)
+            if len(pts) == 1:
+                g = self._g_factor(x)
+                self.set('log', f'x:{x:6.6g} y:{y:6.4g}' + (f' g={g:.5f}' if g else ''))
+            else:
+                (x0, y0), (x1, y1) = pts
+                g0, g1 = self._g_factor(x0), self._g_factor(x1)
+                self.set('log', f'dx= {x1 - x0:g},    dy= {y1 - y0:g}'
+                         + (f',    dg= {g1 - g0:.5f}' if g0 and g1 else ''))
 
     def _ginput_cancel(self):
         if self._ginput is not None:

@@ -25,7 +25,9 @@ tr.tbS2.click(); tr.cbShowFit.setChecked(True); print('showfit', [d.title for d 
 tr.cbShowFit.setChecked(False); tr.cbShowSrc.setChecked(True)
 tr.show_field_position = 50; tr.pbTimeField.click()
 print('time', tr.windowTitle(), [(d.title, d.y.shape, d.ax.xlabel) for d in w.out])
-sm = w.out[1]; print('time trace max', round(float(sm.y.real.max()), 3), 'at', sm.ax.x[np.argmax(sm.y.real)])
+sm = w.out[1]; col = sm.y.real[:, w.view.position]
+print('time out 2D', sm.y.shape, 'viewer at field', w.view.position, 'trace max', round(float(col.max()), 3), 'at', sm.ax.x[np.argmax(col)])
+assert sm.y.shape == (800, 100) and w.view.position == 50
 tr.eSstart.setText('1'); tr.eSend.setText('0'); tr.pbTimeField.click(); print('empty sig', [d.title for d in w.out])
 tr.eSstart.setText('200'); tr.eSend.setText('600'); tr.pbCalculate.click()
 tr.grab().save(str(S/'transient_plugin.png')); tr.close(); app.processEvents()

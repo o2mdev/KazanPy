@@ -37,7 +37,13 @@ so you can chain processing steps.
   the slider switches the direction: *X* shows traces along the first axis (one per
   column), *Y* traces along the second axis (one per row). *Tools > Cut Slice* keeps
   the current slice as the new source.
-* Toolbar: **Measure** (cross: read off coordinates), **Zoom**, zoom/expand X and Y.
+* Toolbar: **Measure**, **Zoom**, zoom/expand X and Y.
+* **Measure** (cross button): a red dashed crosshair follows the mouse and the title
+  shows `x`, `y` and, for a field axis with `freq1`, the g-factor. The first click logs
+  the point; the second logs `dx`, `dy` (and `dg`) from the first. Clicked points are
+  marked with red squares.
+* When a plugin asks for points on the plot (*Pick*, *Add*, ...), the same crosshair
+  is shown and each picked point gets a red square; Esc cancels.
 * **Full scale**: double-click the plot, or *View > Full Scale* (Ctrl+A).
 * *View* menu:
   * **Font** - Default or -4 ... +4 points. All controls, menus and plugin windows follow,

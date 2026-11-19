@@ -7,9 +7,9 @@ subtracted from every transient, the data are optionally smoothed in time
 * **Field domain** - the mean over the *Signal* time points against field, with a
   polynomial baseline (order No/0..3) fitted to the field *Range* (add / remove with the
   cross buttons). *Show Fit* draws the baseline instead of subtracting it.
-* **Time domain** - the transient at the field marked with the cross next to *Switch to
-  Time*, minus the mean transient of the off-resonance range, with the signal and dark
-  regions (pick them with the cross buttons).
+* **Time domain** - all transients (time x field), minus the mean transient of the
+  off-resonance range, shown at the field marked with *Mark field*; the viewer slider
+  steps through the field. The signal and dark regions are marked (*Pick* buttons).
 
 Differences from MATLAB (see Documentation/plugins.md):
 * The baseline is fitted only when the range has more than 3 points (MATLAB tested the
@@ -17,6 +17,8 @@ Differences from MATLAB (see Documentation/plugins.md):
 * Time-domain outputs are all labelled with the time axis (MATLAB kept the field label
   on two of them).
 * The cross buttons are enabled for the current domain from the start.
+* The time domain outputs every field (MATLAB: only the marked one), so the viewer
+  slider steps through the transients.
 """
 from __future__ import annotations
 
@@ -100,7 +102,13 @@ class transient3(KazanPlugin):  # noqa: N801 - MATLAB name
         self.show_field_position = 0    # 0-based field index of the time-domain trace
         self._build_ui()
         self._update_enabled()
+        host.sliceChanged.connect(self._on_slice)
         self.file_update()
+
+    def _on_slice(self, k: int):
+        """Stepping through the field in the viewer (time domain) moves the marked field."""
+        if self.time_field == 0:
+            self.show_field_position = int(k)
 
     # ================================================================ UI
     def _build_ui(self):
@@ -324,20 +332,26 @@ class transient3(KazanPlugin):  # noqa: N801 - MATLAB name
                     out.append(data(x, yout - bl, 'original', [1, 0, 0]))
                 out.append(data(x[af], ysmout[af] - bl[af], 'fit area', [0, 0, 0], **fit_area))
         else:
+            # all transients (time x field), minus the mean off-resonance transient; the
+            # viewer shows the marked field and its slider steps through the field
+            # (MATLAB output only the transient at the marked field)
             pos = self.show_field_position = max(0, min(self.show_field_position, y.shape[0] - 1))
-            ysmout, yout = ysm[pos], y[pos]
+            ysmout, yout = ysm, y
             if areafit.any():
                 ysmout = ysmout - ysm[areafit].mean(axis=0)
                 yout = yout - y[areafit].mean(axis=0)
-            trace = dict(xl=tlabel, ylabel=xlabel, y=np.array([x[pos]]) if len(x) else None)
+            ysmout, yout = ysmout.T, yout.T
+            trace = dict(xl=tlabel, ylabel=xlabel, y=x)
             out = []
             if self.cbShowSrc.isChecked():
                 out.append(data(time, yout, 'original', [1, 0, 0], **trace))
             out.append(data(time, ysmout, 'smoothed', **trace))
-            out.append(data(time[sig], ysmout[sig], 'signal', [0, 1, 0], xl=tlabel))
+            out.append(data(time[sig], ysmout[sig], 'signal', [0, 1, 0], **trace))
             if len(dark):
-                out.append(data(time[dark], ysmout[dark], 'dark', [0, 0, 0], xl=tlabel))
+                out.append(data(time[dark], ysmout[dark], 'dark', [0, 0, 0], **trace))
         self.host.set_data('output', out)
+        if self.time_field == 0:
+            self.host.set('slice', self.show_field_position)
 
     def update_range_labels(self, ax, sig, dark):
         """Signal / dark ranges in time units next to their labels."""

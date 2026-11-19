@@ -209,9 +209,11 @@ buttons apply at once.
 **Time domain** (click *Switch to Time*):
 
 * Mark a field first with *Mark field*, while in the field domain.
-* Output is the transient at the marked field, minus the mean transient of the baseline
-  range (the off-resonance fields). The signal (green) and dark (black) regions are
-  marked.
+* Output is the transients at all fields (time x field), minus the mean transient of
+  the baseline range (the off-resonance fields). The viewer opens at the marked field;
+  its slider, the mouse wheel or Ctrl+U / Ctrl+D step through the field, and the plugin
+  keeps the field you stop at. The signal (green) and dark (black) regions are marked
+  on the current transient. (MATLAB output only the transient at the marked field.)
 * *Pick* next to *Signal* and *Dark* picks that range on the plot.
 
 *Update when file changes* recalculates when a new file is loaded.
