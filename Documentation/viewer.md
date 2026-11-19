@@ -30,7 +30,8 @@ so you can chain processing steps.
 * **Real / Re/Im / Magn** - real part, real and imaginary parts on two axes, or magnitude.
 * **1D / Stack / Contour / Density** - 2D data as one slice, a stack of traces, a
   contour or a density map.
-* **2D data**: the vertical slider right of the plot selects the slice. The label under
+* **2D data**: the vertical slider right of the plot selects the slice (the slider and
+  the **X / Y** button are shown only when the displayed data are 2D). The label under
   the plot shows the slice value and number. To step through slices, use the mouse
   wheel over the plot (when Zoom and Measure are off), *View > Next Slice* (Ctrl+U or
   Ctrl+Right) or *Previous Slice* (Ctrl+D or Ctrl+Left). The **X / Y** button under

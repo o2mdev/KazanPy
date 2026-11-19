@@ -559,11 +559,11 @@ class KazanViewer(QMainWindow):
         elif mode == 'output':
             items = data if isinstance(data, (list, tuple)) else [data]
             self.out = [verify(d.copy()) for d in items]
-            self.update_slider()
         else:
             raise ValueError(f'set_data: unknown mode {mode!r}')
         self.view.data_src_out = 2
         self.bOutput.setChecked(True)
+        self.update_slider()     # after the switch: the slider follows the shown data
         self.plot_data()
 
     def get(self, key):
@@ -716,7 +716,14 @@ class KazanViewer(QMainWindow):
         sets = [self.src] if self.view.data_src_out == 1 else (self.out or [self.src])
         return max([d.y.shape[dim] for d in sets if not d.is_empty] or [1])
 
+    def _shown_sets(self) -> list:
+        """The data sets on display: the source, or the output traces."""
+        return [self.src] if self.view.data_src_out == 1 else (self.out or [self.src])
+
     def update_slider(self):
+        two_d = any(d.is_2d for d in self._shown_sets() if not d.is_empty)
+        if not two_d:
+            self.view.abscissa = 1        # 1D data have no slice direction
         n = self._n_slices()
         self.view.position = min(self.view.position, n - 1)
         self.sl2Dplot.blockSignals(True)
@@ -728,12 +735,12 @@ class KazanViewer(QMainWindow):
         self.sl2Dplot.setPageStep(step)
         self.sl2Dplot.setValue(self.view.position)
         self.sl2Dplot.blockSignals(False)
-        self.slice_col.setVisible(n > 1 or any(d.is_2d for d in [self.src] + self.out))
+        self.slice_col.setVisible(two_d)    # slider and X / Y button only for 2D data
         self.b2D.setText('XY'[self.view.abscissa - 1])
 
     def _on_b2d(self):
         """MATLAB b2DValueChanged: switch the slice direction of 2D data."""
-        two_d = any(d.is_2d for d in [self.src] + self.out)
+        two_d = any(d.is_2d for d in self._shown_sets() if not d.is_empty)
         self.view.abscissa = 1 if (self.view.abscissa == 2 or not two_d) else 2
         self.view.position = 0
         self.update_slider()
