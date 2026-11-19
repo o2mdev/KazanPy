@@ -265,6 +265,7 @@ class KazanViewer(QMainWindow):
         self.plot = KazanPlot()
         self.plot.set_font_size(self.view.font)
         self.plot.clicked.connect(self._on_plot_clicked)
+        self.plot.doubleClicked.connect(self.full_scale)
         self.plot.contextMenuRequested.connect(self._on_plot_context_menu)
         prow = QHBoxLayout()
         prow.setSpacing(2)
@@ -411,6 +412,8 @@ class KazanViewer(QMainWindow):
             self._range_actions[mode] = a
         m.addAction('Select View Area', self._menu_select_view_area)
         m.addAction('Zoom', self.bZoom.toggle)
+        a = m.addAction('Full Scale', self.full_scale)
+        a.setShortcut(QKeySequence('Ctrl+A'))
         m.addSeparator()
         a = m.addAction('Show Grid')
         a.setCheckable(True)
@@ -1176,6 +1179,14 @@ class KazanViewer(QMainWindow):
         self.view.range = mode
         self._range_actions[mode].setChecked(True)
         self.plot_data()
+
+    def full_scale(self):
+        """Show all data (MATLAB zoom out / double-click): tight or auto as set in the View
+        menu; Axis Manual goes back to Axis Tight."""
+        if self.view.range == 'manual':
+            self._set_range('tight')
+        else:
+            self.plot.set_range_mode(self.view.range)
 
     def _menu_select_view_area(self):
         """Type the axis limits; the range becomes manual."""

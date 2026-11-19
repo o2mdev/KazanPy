@@ -38,6 +38,7 @@ so you can chain processing steps.
   column), *Y* traces along the second axis (one per row). *Tools > Cut Slice* keeps
   the current slice as the new source.
 * Toolbar: **Measure** (cross: read off coordinates), **Zoom**, zoom/expand X and Y.
+* **Full scale**: double-click the plot, or *View > Full Scale* (Ctrl+A).
 * *View* menu:
   * **Font** - Default or -4 ... +4 points. All controls, menus and plugin windows follow,
     and button and panel sizes grow with the font. The choice is kept in the ini file.

@@ -54,6 +54,8 @@ class KazanPlot(pg.GraphicsLayoutWidget):
     clicked = Signal(float, float)
     #: global position for the processing context menu
     contextMenuRequested = Signal(QPoint)
+    #: left double-click on the axes (full scale)
+    doubleClicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -226,6 +228,9 @@ class KazanPlot(pg.GraphicsLayoutWidget):
 
     def _on_scene_click(self, ev):
         if ev.button() != Qt.MouseButton.LeftButton:
+            return
+        if ev.double():
+            self.doubleClicked.emit()
             return
         vb = self.real.getViewBox()
         if vb.sceneBoundingRect().contains(ev.scenePos()):
