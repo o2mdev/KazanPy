@@ -24,4 +24,7 @@ print('field-domain output (1D)', vis(), 'abscissa', w.view.abscissa); assert no
 tr.pbTimeField.click(); app.processEvents()
 print('time-domain output (2D)', vis()); assert vis()
 w.bSource.click(); app.processEvents(); print('back to 2D source', vis()); assert vis()
+for pt in ('Stack', 'Contour', 'Density'):          # all slices at once: no slider
+    w._on_plot_type(pt); app.processEvents(); print(pt, vis()); assert not vis()
+w._on_plot_type('1D'); app.processEvents(); print('1D again', vis()); assert vis()
 tr.close(); w.close(); print('OK')

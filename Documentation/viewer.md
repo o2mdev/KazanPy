@@ -33,7 +33,8 @@ so you can chain processing steps.
 ## Plot
 
 * **Real / Re/Im / Magn** - real part, real and imaginary parts on two axes, or magnitude.
-* **1D / Stack / Contour / Density** - 2D data as one slice, a stack of traces, a
+* **1D / Stack / Contour / Density** (the slice slider shows only with 1D; Stack spaces the
+  traces of all overlaid sets equally, so data and fit stay on top of each other) - 2D data as one slice, a stack of traces, a
   contour or a density map.
 * **2D data**: the vertical slider right of the plot selects the slice (the slider and
   the **X / Y** button are shown only when the displayed data are 2D). The label under

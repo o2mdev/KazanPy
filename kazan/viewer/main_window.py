@@ -740,7 +740,9 @@ class KazanViewer(QMainWindow):
         self.sl2Dplot.setPageStep(step)
         self.sl2Dplot.setValue(self.view.position)
         self.sl2Dplot.blockSignals(False)
-        self.slice_col.setVisible(two_d)    # slider and X / Y button only for 2D data
+        # slider and X / Y button only for 2D data shown slice by slice (1D plot type);
+        # Stack / Contour / Density draw all slices at once
+        self.slice_col.setVisible(two_d and self.view.plot_type == '1D')
         self.b2D.setText('XY'[self.view.abscissa - 1])
 
     def _on_b2d(self):
@@ -918,10 +920,15 @@ class KazanViewer(QMainWindow):
                     p.contour(item, ref.ax.x, ref.ax.y, z, levels=levels)
             ylabel = ref.ax.ylabel
         else:
+            # Stack: one trace spacing for all overlaid sets (data + model stay on top of each other)
+            stack_step = 1.0
+            if self.view.plot_type == 'Stack':
+                amps = [np.nanmax(np.abs(self._part(d.y)[0])) for d, _ in sets if d.is_2d and np.size(d.y)]
+                stack_step = (max(amps) if amps else 0.0) or 1.0
             for d, color in sets:
                 re, im = self._part(d.y)
                 if self.view.plot_type == 'Stack' and d.is_2d:
-                    step = np.nanmax(np.abs(re)) or 1.0
+                    step = stack_step
                     for k in range(re.shape[1]):
                         p.line(p.real, d.ax.x, re[:, k] + k * step, color, **self._style(d))
                         if im is not None:
@@ -1310,6 +1317,7 @@ class KazanViewer(QMainWindow):
 
     def _on_plot_type(self, value: str):
         self.view.plot_type = value
+        self.update_slider()
         self.plot_data()
 
     def _set_range(self, mode: str):

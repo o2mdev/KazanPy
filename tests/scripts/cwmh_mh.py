@@ -64,6 +64,14 @@ print('joint fit:', p.Reports.toPlainText().splitlines()[:3])
 r = mh.fit_harmonics(H, B, HS, 0.15, gauss=False)
 assert abs(r['Bm'] / BM - 1) < 0.01 and abs(r['gamma'] / W - 1) < 0.03
 print('signs (model convention):', p.lSigns.text()); assert p.signs == 'as'
+# Stack plot: data and model share the trace spacing (else the model drifts off the data)
+w.view.plot_type = 'Stack'; w._plot_data(); app.processEvents()
+curves = [c for c in w.plot.real.listDataItems() if c.getData()[1] is not None]
+nk = len(HS)
+offs = [np.median(c.getData()[1][:200]) for c in curves]          # flat edges: ~ k * step
+assert len(curves) == 2 * nk and np.allclose(offs[:nk], offs[nk:], atol=0.05 * (offs[1] - offs[0])), offs
+print('stack: data/model offsets equal, step', round(offs[1] - offs[0], 6))
+w.view.plot_type = '1D'; w._plot_data()
 # every second harmonic inverted (lock-in phase slope 180 deg off): Auto flips them back
 assert mh.auto_signs(H * mh.sign_pattern(HS, 'alt')[:, None], B, BM, HS)[0] == 'alt'
 assert mh.auto_signs(H, B, BM, HS)[0] == 'as'
