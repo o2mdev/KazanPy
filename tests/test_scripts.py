@@ -17,7 +17,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = sorted((ROOT / 'tests' / 'scripts').glob('*.py'))
-_DATA = re.compile(r"r'(C:\\Temp\\[^']+)'")
+_DATA = re.compile(r"""['"](C:[\\/]+Temp[\\/][^'"]+)['"]""")   # r'C:\Temp\..' or 'C:/Temp/..'
 
 
 def _missing_data(script: Path) -> list[str]:

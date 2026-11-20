@@ -686,6 +686,11 @@ class KazanViewer(QMainWindow):
         eval + ParameterReader('load'))."""
         ext, subtype = self.ddExt.currentText(), self.ddDataType.currentText()
         opts = self.load_option_values()
+        file_ext = '*' + Path(filename).suffix.lower()
+        if file_ext != ext and file_ext in loaders.SUBTYPES and subtype not in loaders.SUBTYPES[file_ext]:
+            # the file's own type has a loader (e.g. .tdms seen through the '*' filter):
+            # use it with its default options rather than the selected one (e.g. ASCII)
+            ext, subtype, opts = file_ext, loaders.SUBTYPES[file_ext][0], None
         ax, y, dsc = loaders.load(filename, ext, subtype, opts)
         ax, dsc = Struct(ax), Struct(dsc)
         y = np.asarray(y)
