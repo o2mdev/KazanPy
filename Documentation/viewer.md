@@ -10,7 +10,8 @@ in the two lists above it, then click a file to load it. **Up** goes to the pare
 of folders (*Add Current* / *Remove Current* / *Remove All*).
 
 Right-click the file list for *Reload Data*, *Reload Folder*, *Convert* (Save Source)
-and *Select Source* (on by default: loading a file switches the view to Source).
+*Select Source* (on by default: loading a file switches the view to Source) and
+*Copy Full Path* (puts the selected entry's absolute path on the clipboard).
 Right-click the *Results* box to copy or *Clear* it.
 
 Some data types have options (delimiter and column layout for ASCII, axis types for

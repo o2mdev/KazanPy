@@ -1081,7 +1081,19 @@ class KazanViewer(QMainWindow):
         a.setChecked(self._select_source)
         a.setToolTip('Show the Source when a file is loaded')
         a.toggled.connect(lambda on: setattr(self, '_select_source', on))
+        m.addSeparator()
+        m.addAction('Copy Full Path', self.copy_full_path)
         return m
+
+    def copy_full_path(self) -> str:
+        """Put the full path of the current file-list entry on the clipboard."""
+        row = self.lbDirlist.currentRow()
+        if not 0 <= row < len(self._dir_entries):
+            return ''
+        path = str((Path(self.ePath.text()) / self._dir_entries[row][0]).resolve())
+        QApplication.clipboard().setText(path)
+        self.set('message', f'Copied: {path}')
+        return path
 
     def _results_menu(self, pos):
         m = self._build_results_menu()

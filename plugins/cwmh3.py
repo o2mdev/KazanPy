@@ -335,6 +335,10 @@ class CWMH3(KazanPlugin):
                            f"{hh.shape[1]} points, {hh.shape[2]} slice(s)"
                            + (f'; {note}' if note else '') + ('\n' + ', '.join(dev) if dev else ''))
         self.btnFitPhase.setEnabled(has_q)
+        self.btnFitPhase.setToolTip(
+            'Find Phase and Slope from the I/Q data' if has_q else
+            'Needs I and Q channels: this source has only in-phase (I) harmonics, '
+            'so the phase cannot be found afterwards.\nSet Phase/Slope by hand or record with LinMode CH1-IQ.')
         return True
 
     # ---------------------------------------------------------------- pieces

@@ -34,7 +34,9 @@ w.set_data('output', KzData(y=x[:, None], ax=Struct(x=x), title='o'))
 print('output shown', w.view.data_src_out)
 items = run(w._build_dirlist_menu(), 'Reload Data')
 print('file menu', items, '| after Reload Data shows', 'Source' if w.view.data_src_out == 1 else 'Output', w.src.y.max())
-assert items == ['Reload Data', 'Reload Folder', 'Convert', 'Select Source'] and w.view.data_src_out == 1
+assert items == ['Reload Data', 'Reload Folder', 'Convert', 'Select Source', 'Copy Full Path'] and w.view.data_src_out == 1
+run(w._build_dirlist_menu(), 'Copy Full Path'); clip = QApplication.clipboard().text(); print('copied', clip)
+assert Path(clip).is_absolute() and Path(clip).name == 'f1.dat' and Path(clip).exists()
 run(w._build_dirlist_menu(), 'Select Source'); print('select source', w._select_source)
 w.set_data('output', KzData(y=x[:, None], ax=Struct(x=x), title='o'))
 w.lbDirlist.setCurrentRow(names.index('f0.dat')); app.processEvents()
