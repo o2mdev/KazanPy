@@ -58,6 +58,22 @@ LAYOUTS = [('Auto (channel names)', 'auto'), ('Harmonics [1, 2, ...]', 'harm'),
 MODES = ['As Is', 'Harmonics 2D', 'MH reconstruction', 'MH joint fit', 'Power saturation']
 SHOW = [('Absorption', 'abs'), ('Pseudo 1st harmonic', 'd1'), ('Pseudo vs measured H1', 'cmp'),
         ('Harmonics + model', 'model')]
+MODE_HINTS = [
+    'Each selected harmonic as a separate trace (edge baseline removed).',
+    'The selected harmonics as one 2D set; the viewer slider steps through them.',
+    'Absorption reconstructed from all harmonics together (Kalin, Gromov, Schweiger,\n'
+    'JMR 160, 166 (2003)), no overmodulation distortion. Needs the true Bm.',
+    'One Voigt (or Lorentzian) line fitted to all harmonics at once with Bm free:\n'
+    'position, widths, dBpp and Bm (a modulation calibration). Bm is the start value.',
+    'Peak-to-peak of the first selected harmonic vs microwave power (slices, attenuation\n'
+    'in ax.y), fitted with A sqrt(P) / (1 + P/Ps)^e: gives the saturation power Ps.']
+SHOW_HINTS = [
+    'The reconstructed absorption line (integral form).',
+    'The 1st derivative a measurement at Bm out would give.',
+    'Pseudo H1 at Bm out (red) over the measured H1 at Bm (blue): a check of the\n'
+    'reconstruction and of the overmodulation.',
+    'Each harmonic (blue) with the one predicted from the reconstructed absorption (red),\n'
+    'as 2D sets: shows which harmonics do not fit.']
 PHASE_FITS = [('principal axis', 'axis'), ('min. imaginary', 'imag')]
 SIGNS = [('Auto (H2 vs H1)', 'auto'), ('As recorded', 'as'), ('Alternate (-1)^(h-1)', 'alt')]
 COLORS = ['b', 'r', 'g', 'm', 'c', 'k']
@@ -245,26 +261,52 @@ class CWMH3(KazanPlugin):
 
         box = QGroupBox('Method')
         f = QFormLayout(box)
+
+        def row_(label, widget, tip, items=None):
+            """Form row with the same hint on the label and the control (and per item)."""
+            f.addRow(label, widget)
+            widget.setToolTip(tip)
+            f.labelForField(widget).setToolTip(tip)
+            for i, item_tip in enumerate(items or []):
+                widget.setItemData(i, item_tip, Qt.ItemDataRole.ToolTipRole)
+
         self.DropDown2 = QComboBox()
         self.DropDown2.addItems(MODES)
-        f.addRow('Mode', self.DropDown2)
+        row_('Mode', self.DropDown2, 'What Calculate does with the selected harmonics '
+             '(hover over an item for details)', MODE_HINTS)
         self.sbBm = SciSpinBox(0.1, 0.01, 0, 1e3)
-        self.sbBm.setToolTip('Modulation amplitude, G peak-to-peak (true field; start value of '
-                             'the joint fit)')
-        f.addRow('Bm, G', self.sbBm)
+        row_('Bm, G', self.sbBm,
+             'Modulation amplitude at the sample, G peak-to-peak: the true (calibrated) field,\n'
+             'not the nominal setting.\n'
+             'MH reconstruction: used as is; a wrong Bm shows as resid/sigma > 1.5 and\n'
+             'data/H1-model away from +1 in the report.\n'
+             'MH joint fit: start value only; Bm is fitted (a modulation calibration).')
         self.sbBmOut = SciSpinBox(0.01, 0.001, 0, 1e3)
-        self.sbBmOut.setToolTip('Bm of the pseudo 1st harmonic (e.g. the dBpp of the line)')
-        f.addRow('Bm out, G', self.sbBmOut)
+        row_('Bm out, G', self.sbBmOut,
+             'Modulation amplitude of the pseudo 1st harmonic, G peak-to-peak: the H1 a\n'
+             'measurement at this Bm would give, without overmodulation.\n'
+             'Smaller: narrower lines resolved, undistorted derivative (start near the line\n'
+             'dBpp or below). Larger: smoother, broadened derivative.\n'
+             'Used by Show = Pseudo 1st harmonic and Pseudo vs measured H1.')
         self.sbMu = SciSpinBox(1e-3, 1e-4, 0, 1)
-        self.sbMu.setToolTip('Tikhonov regularisation: features broader than ~Bm/sqrt(mu) are lost')
-        f.addRow('mu', self.sbMu)
+        row_('mu', self.sbMu,
+             'Regularisation (Tikhonov) of the harmonic combination. The harmonics carry\n'
+             'little information on broad features; mu suppresses them and their noise.\n'
+             'Larger mu: flatter baseline, but features broader than ~Bm/sqrt(mu) are lost.\n'
+             'Smaller mu: broad features kept, more baseline wander. 0: none.\n'
+             'Typical 1e-4 ... 1e-2.')
         self.ddShow = QComboBox()
         for label, key in SHOW:
             self.ddShow.addItem(label, key)
-        f.addRow('Show', self.ddShow)
+        row_('Show', self.ddShow, 'Which result of the reconstruction goes to the viewer '
+             '(hover over an item for details)', SHOW_HINTS)
         self.cbGauss = QCheckBox('Voigt (Gaussian part); off: Lorentzian')
         self.cbGauss.setChecked(True)
-        f.addRow('Line', self.cbGauss)
+        row_('Line', self.cbGauss,
+             'Line shape of the joint fit.\n'
+             'On: Voigt, a Lorentzian convolved with a Gaussian (inhomogeneous broadening,\n'
+             'e.g. unresolved hyperfine); the Gaussian sd is fitted too.\n'
+             'Off: pure Lorentzian, one width; faster and more stable for narrow lines.')
         self._method_rows = f
         v.addWidget(box)
 
@@ -386,9 +428,12 @@ class CWMH3(KazanPlugin):
                 snr = np.array([s['snr'] for s in mh.harmonic_snr(np.abs(hc))])
                 r = mh.fit_phase_line(hs, phi, weights=snr ** 2)
                 phase1, slope = r['phase1'], r['slope']
-                text = ('phase per harmonic (deg, mod 180): '
-                        + ', '.join(f'H{h} {p:.1f}' for h, p in zip(hs, phi))
-                        + f"\nline fit rms {r['rms']:.1f} deg")
+                line = phase1 + slope * (np.asarray(hs) - hs[0])      # phase1 refers to hs[0]
+                dev = (np.asarray(phi) - line + 90) % 180 - 90
+                text = '\n'.join([f"line fit rms {r['rms']:.1f} deg",
+                                  'harmonic  phase  line   dev    (deg, mod 180)']
+                                 + [f'H{h:<3d} {p:7.1f} {(l + 90) % 180 - 90:6.1f} {d:+6.1f}'
+                                    for h, p, l, d in zip(hs, phi, line, dev)])
             else:
                 ph0, slope = find_lin_phase(list(hc))
                 phase1, text = ph0, 'Kazan3 min. imaginary fit'
@@ -435,9 +480,7 @@ class CWMH3(KazanPlugin):
             else:
                 out = [self._trace(field, y.T, 'harmonics', None, flabel,
                                    y=np.asarray(hs, float), ylabel='Harmonic, #')]
-            snr = mh.harmonic_snr(data.real)
-            self.Reports.setPlainText('SNR (p-p / edge rms):\n' + '  '.join(
-                f"H{h} {s['snr']:.0f}" for h, s in zip(hs, snr)))
+            self.Reports.clear()
         elif mode == 'MH reconstruction':
             out = self._reconstruction(field, flabel, hs, data.real)
         else:
@@ -452,7 +495,8 @@ class CWMH3(KazanPlugin):
             bm = self.sbBm.value()
             kind, c = mh.auto_signs(h, field, bm if bm > 0 else 0.1, hs)
             note = (f'auto: {"alternate" if kind == "alt" else "as recorded"}'
-                    + (f' (H2/model {c[1]:+.2f})' if np.isfinite(c[1]) else ' (needs H1, H2)'))
+                    + (f' (H2/model {c[1]:+.2f})' if len(c) > 1 and np.isfinite(c[1])
+                       else ' (needs H1, H2)'))
         self.signs = kind
         self.lSigns.setText(note)
         return mh.sign_pattern(hs, kind)
@@ -478,21 +522,17 @@ class CWMH3(KazanPlugin):
                    self._trace(field, r['model'].T, 'model', 'r', flabel, y=ys, ylabel='Harmonic, #')]
         res = mh.resolution(bm, hs)
         d1 = mh.snr_pp(r['d1'])
-        lines = [f"absorption SNR {mh.snr_peak(r['S'])['snr']:.0f}; pseudo H1 (Bm {r['bm_out']:g} G) "
-                 f"SNR {d1['snr']:.0f}, p-p {d1['pp']:.4g}",
+        lines = [f"pseudo H1 (Bm {r['bm_out']:g} G) p-p {d1['pp']:.4g}",
                  f"band limit: lines narrower than HWHM {res['w_min'] * 1e3:.1f} mG are smoothed",
-                 'harmonic  SNR  weight  resid/sigma  data/H1-model']
-        snr = mh.harmonic_snr(h)
+                 'harmonic  weight  resid/sigma  data/H1-model']
         scale = mh.harmonic_scales(h, field, bm, hs)
         for i, hh in enumerate(hs):
-            lines.append(f"H{hh:<3d} {snr[i]['snr']:7.1f} {r['w'][i]:7.3f} {r['resid'][i] / r['sigma'][i]:8.2f}"
+            lines.append(f"H{hh:<3d}  {r['w'][i]:7.3f} {r['resid'][i] / r['sigma'][i]:8.2f}"
                          f"     {scale[i]:+7.2f}")
         lines.append('data/H1-model: each harmonic against the one predicted from H1 alone; '
                      '~+1 is right, <0 inverted, <1 phase or Bm off (meaningless at low SNR)')
         if self.signs == 'alt':
             lines.append('signs: every second harmonic flipped (lock-in phase slope 180 deg off)')
-        if h1:
-            lines.insert(1, f"measured H1 SNR {snr[h1[0]]['snr']:.0f} (at Bm {bm:g} G)")
         bad = [hh for i, hh in enumerate(hs) if r['resid'][i] / r['sigma'][i] > 1.5]
         if bad:
             lines.append('WARNING: resid/sigma > 1.5 for ' + ', '.join(f'H{x}' for x in bad)
@@ -528,7 +568,8 @@ class CWMH3(KazanPlugin):
             f"Lorentz HWHM {r['gamma'] * 1e3:.1f} mG   Gauss sd {r['sigma'] * 1e3:.1f} mG",
             f"Bm {r['Bm']:.4f} +- {r['Bm_err']:.4f} G  (set {bm0:g} G, ratio {r['Bm'] / bm0:.4f})",
             f"chi2/dof {r['chi2']:.2f}",
-            'resid/sigma: ' + '  '.join(f'H{hh} {v:.2f}' for hh, v in zip(hs, r['resid_sigma']))]
+            'harmonic  resid/sigma']
+            + [f'H{hh:<3d} {v:8.2f}' for hh, v in zip(hs, r['resid_sigma'])]
             + ['WARNING: ' + x for x in warn]))
         return out
 

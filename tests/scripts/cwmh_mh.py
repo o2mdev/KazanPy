@@ -84,7 +84,7 @@ res = {}
 for i, key in enumerate(('auto', 'as', 'alt')):
     p.ddSigns.setCurrentIndex(i); p.calculate()
     rows = [l.split() for l in p.Reports.toPlainText().splitlines() if l.startswith(('H2 ', 'H3 '))]
-    res[key] = [float(r[3]) for r in rows]
+    res[key] = [float(r[2]) for r in rows]      # columns: harmonic, weight, resid/sigma, ...
     print(f'13283 signs {key}: resid/sigma H2, H3', res[key], '|', p.lSigns.text())
 assert p.signs == 'alt' and res['auto'] == res['alt'] and max(res['alt']) < 2.5 and res['as'][0] > 4 * res['alt'][0]
 p.ddSigns.setCurrentIndex(0)

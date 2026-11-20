@@ -339,8 +339,7 @@ meaningful for harmonics with good SNR).
 
 **Mode**
 
-* **As Is** - the selected harmonics as separate traces (edge baseline removed); the report
-  gives each harmonic's SNR (p-p / rms of the 15 % edges).
+* **As Is** - the selected harmonics as separate traces (edge baseline removed).
 * **Harmonics 2D** - the harmonics as one 2D set; the viewer slider steps through them.
 * **MH reconstruction** - the absorption from all harmonics (Kalin, Gromov, Schweiger,
   JMR 160, 166 (2003)): in the Fourier domain each harmonic is the absorption times
@@ -348,8 +347,8 @@ meaningful for harmonics with good SNR).
   Tikhonov term; features broader than about Bm/sqrt(mu) are lost). **Show**: the
   absorption, the pseudo 1st harmonic at *Bm out* (what a small-modulation measurement
   would give, without overmodulation), pseudo vs measured H1, or the harmonics with the
-  model. The report gives the absorption and pseudo-H1 SNR, the band limit (narrower
-  lines are smoothed) and per harmonic SNR, weight and residual/noise, with warnings.
+  model. The report gives the pseudo-H1 peak-to-peak, the band limit (narrower lines are
+  smoothed) and per harmonic weight, residual/noise and data/H1-model, with warnings.
 * **MH joint fit** - one Voigt (or Lorentzian) line fitted to all harmonics at once with
   Bm free: position, Lorentz and Gauss widths, dBpp, Bm (a modulation calibration). Bm is
   defined only for Bm >= ~2 dBpp; several lines need another model (warned in the report).
