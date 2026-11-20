@@ -28,7 +28,7 @@ from ..io import writers
 from ..io.ascii import ascii_write
 from ..io.params import parameter_reader
 from . import console, figures
-from .plot import COLOR_ORDER, KazanPlot
+from .plot import COLOR_ORDER, KazanPlot, to_qcolor
 
 RESOURCES = Path(__file__).resolve().parent.parent / 'resources'
 DOCS = Path(__file__).resolve().parents[2] / 'Documentation'
@@ -148,7 +148,7 @@ def _install_menu_style():
 class View:
     """Port of ``app.View`` (only the fields used so far)."""
     data_src_out: int = 1        # 1 source, 2 output
-    part: str = 'real'           # 'real' | 'reim' | 'magn'
+    part: str = 'real'           # 'real' | 'reim' | 'overlay' (Re+Im in one plot) | 'magn'
     plot_type: str = '1D'        # '1D' | 'Stack' | 'Contour' | 'Density'
     position: int = 0            # current slice, 0-based
     abscissa: int = 1            # 1: slices are columns (X abscissa), 2: rows (Y abscissa)
@@ -298,7 +298,8 @@ class KazanViewer(QMainWindow):
         row1.addSpacing(30)
         self.part_buttons = self._group(
             row1, [(QPushButton(t), v) for t, v in
-                   (('Real', 'real'), ('Re/Im', 'reim'), ('Magn', 'magn'))], self._on_part)
+                   (('Real', 'real'), ('Re/Im', 'reim'), ('Re+Im', 'overlay'), ('Magn', 'magn'))],
+            self._on_part)
         row1.addSpacing(30)
         self.type_buttons = self._group(
             row1, [(QPushButton(t), t) for t in ('1D', 'Stack', 'Contour', 'Density')],
@@ -895,7 +896,16 @@ class KazanViewer(QMainWindow):
     def _part(self, y):
         if self.view.part == 'magn':
             return np.abs(y), None
-        return np.real(y), (np.imag(y) if self.view.part == 'reim' else None)
+        return np.real(y), (np.imag(y) if self.view.part in ('reim', 'overlay') else None)
+
+    @staticmethod
+    def _imag_pen(color, style: dict, n_sets: int) -> tuple:
+        """Re+Im mode: colour and style of the imaginary trace drawn over the real one.
+        One set: green (blue if the real trace is green); several: same colour, dashed."""
+        if n_sets > 1:
+            return color, dict(style, style='--')
+        green = to_qcolor('g').name()
+        return ('b' if to_qcolor(color).name() == green else 'g'), style
 
     def _plot_data(self, p=None):
         """Draw into the viewer plot, or into ``p`` (a figure, MATLAB PlotData(rAxis, iAxis))."""
@@ -911,6 +921,8 @@ class KazanViewer(QMainWindow):
 
         if self.view.plot_type in ('Contour', 'Density') and ref.is_2d:
             re, im = self._part(ref.y)
+            if self.view.part == 'overlay':     # two images cannot share one axis: real only
+                im = None
             cc = matlab_vector(ref.ax.get('contour'), default=np.arange(1, 7) / 10)
             for item, z in ((p.real, re), (p.imag, im)):
                 if z is None:
@@ -930,20 +942,25 @@ class KazanViewer(QMainWindow):
             if self.view.plot_type == 'Stack':
                 amps = [np.nanmax(np.abs(self._part(d.y)[0])) for d, _ in sets if d.is_2d and np.size(d.y)]
                 stack_step = (max(amps) if amps else 0.0) or 1.0
+            overlay = self.view.part == 'overlay'
+            im_item = p.real if overlay else p.imag
             for d, color in sets:
                 re, im = self._part(d.y)
+                style = self._style(d)
+                im_color, im_style = (self._imag_pen(color, style, len(sets)) if overlay
+                                      else (color, style))
                 if self.view.plot_type == 'Stack' and d.is_2d:
                     step = stack_step
                     for k in range(re.shape[1]):
-                        p.line(p.real, d.ax.x, re[:, k] + k * step, color, **self._style(d))
+                        p.line(p.real, d.ax.x, re[:, k] + k * step, color, **style)
                         if im is not None:
-                            p.line(p.imag, d.ax.x, im[:, k] + k * step, color, **self._style(d))
+                            p.line(im_item, d.ax.x, im[:, k] + k * step, im_color, **im_style)
                 else:
                     t = self.get_slice(d, self.view.abscissa, self.view.position)
                     tre, tim = self._part(t.y)
-                    p.line(p.real, t.ax.x, tre[:, 0], color, **self._style(d))
+                    p.line(p.real, t.ax.x, tre[:, 0], color, **style)
                     if tim is not None:
-                        p.line(p.imag, t.ax.x, tim[:, 0], color, **self._style(d))
+                        p.line(im_item, t.ax.x, tim[:, 0], im_color, **im_style)
             ylabel = ref.ax.get('unit') or 'a.u.'
         xlabel = ref.ax.xlabel
         if self.view.abscissa == 2 and self.view.plot_type == '1D':
@@ -958,8 +975,7 @@ class KazanViewer(QMainWindow):
                              invy=self.view.ytype == 'reverse')
 
         if not main:
-            src = self.src if self.view.data_src_out == 1 else ref
-            p.set_title(Path(src.filename).name if src.filename else (src.title or ''))
+            p.set_title(self._plot_title(ref))
             p.set_range_mode(self.view.range if self.view.range != 'manual' else 'tight')
             return
         n = self._n_slices()
@@ -979,10 +995,16 @@ class KazanViewer(QMainWindow):
         if time.monotonic() < self._message_until:
             p.set_title(self._message)
         else:
-            src = self.src if self.view.data_src_out == 1 else ref
-            p.set_title(Path(src.filename).name if src.filename else (src.title or ''))
+            p.set_title(self._plot_title(ref))
         if self.view.range != 'manual':
             p.set_range_mode(self.view.range)
+
+    def _plot_title(self, ref: KzData) -> str:
+        """File name (or data title), plus '[N traces]' when the data holds more than one."""
+        src = self.src if self.view.data_src_out == 1 else ref
+        title = Path(src.filename).name if src.filename else (src.title or '')
+        n = self._n_slices()
+        return f'{title}  [{n} traces]' if n > 1 else title
 
     # ================================================================ plugins
     def make_plugins(self, mode: str):
