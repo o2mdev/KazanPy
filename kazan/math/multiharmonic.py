@@ -163,6 +163,39 @@ def reconstruct(h, field, bm: float, hs, sigma=None, mu: float = 1e-3, pad: floa
             'data': hd, 'resid': resid, 'sigma': sig, 'w': w / w.sum(), 'mu': mu}
 
 
+MU_SCALES = 1e-2   # H1-only deconvolution: noise amplification vs bias of the higher harmonics
+
+
+def harmonic_scales(h, field, bm: float, hs, edge: float = SNR_EDGE) -> np.ndarray:
+    """Data/model scale of each harmonic, the model predicted from the absorption of the
+    1st (lowest) harmonic alone. A wrong lock-in phase of harmonic h shows as a scale
+    cos(dphi) < 1, an inverted harmonic as a negative scale. Noise-only harmonics give
+    meaningless values."""
+    h = np.atleast_2d(np.asarray(h, float))
+    b = np.asarray(field, float)
+    s = reconstruct(h[:1], b, bm, list(hs)[:1], edge=edge, mu=MU_SCALES, zcut=max(hs))['S']
+    m = forward(s, b[1] - b[0], bm, hs)
+    d = debase(h, edge)
+    return (d * m).sum(1) / np.maximum((m * m).sum(1), 1e-300)
+
+
+def auto_signs(h, field, bm: float, hs, edge: float = SNR_EDGE) -> tuple[str, np.ndarray]:
+    """'alt' when the harmonic after the 1st is inverted against the model (a lock-in
+    phase slope 180 deg off: every second harmonic flipped), else 'as'. Needs H1 and H2."""
+    hs = list(hs)
+    if 1 not in hs or 2 not in hs:
+        return 'as', np.full(len(hs), np.nan)
+    i1, i2 = hs.index(1), hs.index(2)
+    c = harmonic_scales(np.asarray(h)[[i1, i2]], field, bm, [1, 2], edge)
+    return ('alt' if c[1] < 0 else 'as'), c
+
+
+def sign_pattern(hs, kind: str) -> np.ndarray:
+    """Factor of each harmonic: 1 ('as'), (-1)^(h-1) ('alt')."""
+    hs = np.asarray(hs)
+    return (-1.0) ** (hs - 1) if kind == 'alt' else np.ones(hs.size)
+
+
 # ---------------------------------------------------------------- joint line fit
 _KERNELS: dict = {}
 

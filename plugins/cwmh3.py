@@ -59,6 +59,7 @@ MODES = ['As Is', 'Harmonics 2D', 'MH reconstruction', 'MH joint fit', 'Power sa
 SHOW = [('Absorption', 'abs'), ('Pseudo 1st harmonic', 'd1'), ('Pseudo vs measured H1', 'cmp'),
         ('Harmonics + model', 'model')]
 PHASE_FITS = [('principal axis', 'axis'), ('min. imaginary', 'imag')]
+SIGNS = [('Auto (H2 vs H1)', 'auto'), ('As recorded', 'as'), ('Alternate (-1)^(h-1)', 'alt')]
 COLORS = ['b', 'r', 'g', 'm', 'c', 'k']
 P_REF = 20.0   # dBm
 
@@ -228,6 +229,18 @@ class CWMH3(KazanPlugin):
         g.addWidget(self.btnFitPhase, 1, 4)
         g.addWidget(self.ddPhaseFit, 1, 1, 1, 3)
         g.addWidget(QLabel('Fit by'), 1, 0)
+        self.ddSigns = QComboBox()
+        for label, key in SIGNS:
+            self.ddSigns.addItem(label, key)
+        self.ddSigns.setToolTip(
+            'Harmonic signs. Alternate flips every second harmonic: a lock-in phase slope\n'
+            '180 deg off (e.g. ModPhSlope -70 instead of 110). Auto compares H2 with the\n'
+            'H2 predicted from H1 and flips when it is inverted. Works for I-only data.')
+        g.addWidget(QLabel('Signs'), 2, 0)
+        g.addWidget(self.ddSigns, 2, 1, 1, 3)
+        self.lSigns = QLabel('')
+        self.lSigns.setStyleSheet('color: #606060;')
+        g.addWidget(self.lSigns, 2, 4)
         v.addWidget(box)
 
         box = QGroupBox('Method')
@@ -274,6 +287,7 @@ class CWMH3(KazanPlugin):
         self.ddShow.currentIndexChanged.connect(self.calculate)
         self.SourceDropDown.currentIndexChanged.connect(self._source_changed)
         self.btnUsePhase.toggled.connect(self.calculate)
+        self.ddSigns.currentIndexChanged.connect(self.calculate)
         self._update_enabled()
 
     def _update_enabled(self, *_):
@@ -412,7 +426,7 @@ class CWMH3(KazanPlugin):
         k = self._slice()
         n = hh.shape[1]
         field, flabel = field_axis(self.src, n)
-        data = hh[:, :, k]
+        data = hh[:, :, k] * self._signs(hs, hh[:, :, k].real, field)[:, None]
         if mode in ('As Is', 'Harmonics 2D'):
             y = mh.debase(data.real) + (1j * mh.debase(data.imag) if self.has_q else 0)
             if mode == 'As Is':
@@ -429,6 +443,19 @@ class CWMH3(KazanPlugin):
         else:
             out = self._joint_fit(field, flabel, hs, data.real)
         self.host.set_data('output', out)
+
+    def _signs(self, hs, h, field) -> np.ndarray:
+        """Sign factor of each harmonic from the Signs selection (Auto: H2 vs H1)."""
+        kind = self.ddSigns.currentData()
+        note = ''
+        if kind == 'auto':
+            bm = self.sbBm.value()
+            kind, c = mh.auto_signs(h, field, bm if bm > 0 else 0.1, hs)
+            note = (f'auto: {"alternate" if kind == "alt" else "as recorded"}'
+                    + (f' (H2/model {c[1]:+.2f})' if np.isfinite(c[1]) else ' (needs H1, H2)'))
+        self.signs = kind
+        self.lSigns.setText(note)
+        return mh.sign_pattern(hs, kind)
 
     def _reconstruction(self, field, flabel, hs, h):
         bm, bm_out = self.sbBm.value(), self.sbBmOut.value()
@@ -454,10 +481,16 @@ class CWMH3(KazanPlugin):
         lines = [f"absorption SNR {mh.snr_peak(r['S'])['snr']:.0f}; pseudo H1 (Bm {r['bm_out']:g} G) "
                  f"SNR {d1['snr']:.0f}, p-p {d1['pp']:.4g}",
                  f"band limit: lines narrower than HWHM {res['w_min'] * 1e3:.1f} mG are smoothed",
-                 'harmonic  SNR  weight  resid/sigma']
+                 'harmonic  SNR  weight  resid/sigma  data/H1-model']
         snr = mh.harmonic_snr(h)
+        scale = mh.harmonic_scales(h, field, bm, hs)
         for i, hh in enumerate(hs):
-            lines.append(f"H{hh:<3d} {snr[i]['snr']:7.1f} {r['w'][i]:7.3f} {r['resid'][i] / r['sigma'][i]:8.2f}")
+            lines.append(f"H{hh:<3d} {snr[i]['snr']:7.1f} {r['w'][i]:7.3f} {r['resid'][i] / r['sigma'][i]:8.2f}"
+                         f"     {scale[i]:+7.2f}")
+        lines.append('data/H1-model: each harmonic against the one predicted from H1 alone; '
+                     '~+1 is right, <0 inverted, <1 phase or Bm off (meaningless at low SNR)')
+        if self.signs == 'alt':
+            lines.append('signs: every second harmonic flipped (lock-in phase slope 180 deg off)')
         if h1:
             lines.insert(1, f"measured H1 SNR {snr[h1[0]]['snr']:.0f} (at Bm {bm:g} G)")
         bad = [hh for i, hh in enumerate(hs) if r['resid'][i] / r['sigma'][i] > 1.5]

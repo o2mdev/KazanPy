@@ -63,6 +63,23 @@ p.DropDown2.setCurrentText('MH joint fit'); p.sbBm.setValue(0.15); w._message = 
 print('joint fit:', p.Reports.toPlainText().splitlines()[:3])
 r = mh.fit_harmonics(H, B, HS, 0.15, gauss=False)
 assert abs(r['Bm'] / BM - 1) < 0.01 and abs(r['gamma'] / W - 1) < 0.03
+print('signs (model convention):', p.lSigns.text()); assert p.signs == 'as'
+# every second harmonic inverted (lock-in phase slope 180 deg off): Auto flips them back
+assert mh.auto_signs(H * mh.sign_pattern(HS, 'alt')[:, None], B, BM, HS)[0] == 'alt'
+assert mh.auto_signs(H, B, BM, HS)[0] == 'as'
+
+# pTAM 13283 (I only, ModPhSlope -70): H2 is inverted; with the flip H2, H3 fit the noise
+f = r'C:\Temp\Jens\pTAM_pH-6p6_Power_Test\13283_CWFDfile.tdms'
+w.ddExt.setCurrentText('*.tdms'); w.ddDataType.setCurrentText('SpecMan'); w.ddLoadOption1.setCurrentIndex(0)
+w.load_file(f); app.processEvents(); p._read_source(); p.DropDown2.setCurrentText('MH reconstruction')
+res = {}
+for i, key in enumerate(('auto', 'as', 'alt')):
+    p.ddSigns.setCurrentIndex(i); p.calculate()
+    rows = [l.split() for l in p.Reports.toPlainText().splitlines() if l.startswith(('H2 ', 'H3 '))]
+    res[key] = [float(r[3]) for r in rows]
+    print(f'13283 signs {key}: resid/sigma H2, H3', res[key], '|', p.lSigns.text())
+assert p.signs == 'alt' and res['auto'] == res['alt'] and max(res['alt']) < 2.5 and res['as'][0] > 4 * res['alt'][0]
+p.ddSigns.setCurrentIndex(0)
 
 # blocks and I-only layouts give the same harmonics
 blocks = np.concatenate([HC.real.T, HC.imag.T], axis=1)[:, None, :]
@@ -104,7 +121,7 @@ for f, sub in ((r'C:\Temp\Jens\pTAM_pH-6p6_Power_Test\13264_CWFD.tdms', 'CH1:I10
     p = launch()
     print(f'{sub}:', p.lInfo.text().replace('\n', ' | '))
     p.DropDown2.setCurrentText('MH reconstruction'); p.sbBmOut.setValue(0.05); p.calculate()
-    print('   ', p.Reports.toPlainText().splitlines()[0])
+    print('   ', p.Reports.toPlainText().splitlines()[0], '| signs', p.lSigns.text())
     assert w.out and np.all(np.isfinite(w.out[0].y))
     p.DropDown2.setCurrentText('MH joint fit'); p.calculate()
     print('   ', ' / '.join(p.Reports.toPlainText().splitlines()[:3]))

@@ -329,6 +329,14 @@ I/Q cloud, then a line mod 180 weighted by SNR^2; SpecMan skill) or *min. imagin
 (Kazan3). With I only, the phases must be right on the instrument: a wrong phase scales or
 flips a harmonic and cannot be corrected afterwards.
 
+**Signs** - *Alternate* multiplies harmonic h by (-1)^(h-1): every second harmonic inverted,
+what a lock-in phase slope 180 deg off gives. This one case is exact for I-only data too.
+*Auto* (default) predicts H2 from H1 and flips when the measured H2 is inverted; the label
+next to it shows the decision. The pTAM and HOPE71 SpecMan files need *Alternate*.
+The reconstruction report has a *data/H1-model* column: each harmonic against the one
+predicted from H1 alone (~+1 right, negative inverted, below 1 a phase or Bm error; only
+meaningful for harmonics with good SNR).
+
 **Mode**
 
 * **As Is** - the selected harmonics as separate traces (edge baseline removed); the report
