@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import shiboken6
-from PySide6.QtCore import QEvent, QEventLoop, QObject, QSize, Qt, QUrl, Signal
+from PySide6.QtCore import QEvent, QEventLoop, QObject, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (QAction, QActionGroup, QDesktopServices, QFont, QFontMetrics, QIcon,
                            QKeySequence, QShortcut)
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog, QSlider,
@@ -47,6 +47,10 @@ QPushButton:checked:hover { border-color: #0078d7; }
 QListWidget::item:selected { background: #c0c0c0; color: black; }
 """
 BASE_FONT = 10   # point size the fixed widget sizes below are designed for
+#: window size at which the viewer font is the View font; MATLAB UIFigureSizeChanged
+#: scales it by min(w / w0, h / h0) (MATLAB standard_size [847 581], times 1.2)
+STANDARD_SIZE = (1165, 860)
+SIZE_SCALE_RANGE = (0.5, 2.5)
 
 #: Help menu texts (MATLAB KazanViewerHelp), adapted to the Python port
 HELP = {
@@ -206,6 +210,9 @@ class KazanViewer(QMainWindow):
             self.view.font = self.view.default_font
         self.view.font = int(np.clip(self.view.font, self.view.default_font - 4, self.view.default_font + 4))
         self._scaled: list = []      # (widget, sizes at BASE_FONT), see _scale
+        self._size_scale = 1.0       # window size / STANDARD_SIZE, see _window_pt
+        self._resize_timer = QTimer(self, singleShot=True, interval=100)
+        self._resize_timer.timeout.connect(self._on_resize_settled)
         self._message = ''
         self._message_until = 0.0
         self._ginput: dict | None = None
@@ -213,7 +220,7 @@ class KazanViewer(QMainWindow):
 
         self.setWindowTitle('KAZAN3')
         self.setWindowIcon(QIcon(str(RESOURCES / 'pbZoom.png')))
-        self.resize(1165, 860)
+        self.resize(*STANDARD_SIZE)
         _install_menu_style()
         self._build_ui()
         self._build_menus()
@@ -406,7 +413,7 @@ class KazanViewer(QMainWindow):
     def _scale(self, widget, **sizes):
         """Register a fixed size (pixels at BASE_FONT points) that follows the font."""
         self._scaled.append((widget, sizes))
-        self._apply_sizes(widget, sizes, self.view.font / BASE_FONT)
+        self._apply_sizes(widget, sizes, self._window_pt() / BASE_FONT)
 
     @staticmethod
     def _apply_sizes(widget, sizes, k):
@@ -425,10 +432,14 @@ class KazanViewer(QMainWindow):
         if 'icon' in px:
             widget.setIconSize(QSize(px['icon'], px['icon']))
 
+    def _window_pt(self) -> float:
+        """Viewer font: the View font scaled with the window size (0.5 pt steps)."""
+        return max(round(self.view.font * self._size_scale * 2) / 2, 4.0)
+
     def _apply_font(self):
-        """MATLAB UIFigureSizeChanged font part: every control uses the View font. The
-        size goes into the application style sheet (a style sheet masks
-        QApplication.setFont), so plugin windows follow too; fixed sizes scale with it."""
+        """The View font. It goes into the application style sheet (a style sheet masks
+        QApplication.setFont), so plugin windows and dialogs use it; the viewer window
+        itself scales it with its size, see :meth:`_apply_window_font`."""
         pt = self.view.font
         k = pt / BASE_FONT
         QApplication.instance().setStyleSheet(
@@ -438,17 +449,41 @@ class KazanViewer(QMainWindow):
         f = QApplication.font()
         f.setPointSize(pt)
         QApplication.setFont(f)
+        self._apply_window_font()
+        for a in getattr(self, '_font_actions', {}).values():
+            a.setChecked(False)
+        a = getattr(self, '_font_actions', {}).get(pt - self.view.default_font)
+        if a is not None:
+            a.setChecked(True)
+
+    def _apply_window_font(self):
+        """MATLAB UIFigureSizeChanged: every control of the viewer window (menus too,
+        which MATLAB could not do) uses the View font times the window scale."""
+        pt = self._window_pt()
+        self._applied_pt = pt
+        k = pt / BASE_FONT
+        self.setStyleSheet(
+            f'* {{ font-size: {pt:g}pt; }}\n'
+            f'QPushButton {{ padding: {round(3 * k)}px {round(8 * k)}px; }}\n'
+            f'*[fontScale="big"] {{ font-size: {round(pt * 1.6)}pt; font-weight: bold; }}\n')
         for widget, sizes in self._scaled:
             self._apply_sizes(widget, sizes, k)
         mb = self.menuBar()      # QMenuBar keeps its item layout until told the font changed
         QApplication.sendEvent(mb, QEvent(QEvent.Type.FontChange))
         mb.updateGeometry()
         self.plot.set_font_size(pt)
-        for a in getattr(self, '_font_actions', {}).values():
-            a.setChecked(False)
-        a = getattr(self, '_font_actions', {}).get(pt - self.view.default_font)
-        if a is not None:
-            a.setChecked(True)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._resize_timer.start()       # restyle once the drag settles
+
+    def _on_resize_settled(self):
+        w0, h0 = STANDARD_SIZE
+        self._size_scale = float(np.clip(min(self.width() / w0, self.height() / h0),
+                                         *SIZE_SCALE_RANGE))
+        if self._window_pt() != getattr(self, '_applied_pt', None):
+            self._apply_window_font()
+            self.plot_data()
 
     def _build_menus(self):
         mb = self.menuBar()
@@ -1000,11 +1035,18 @@ class KazanViewer(QMainWindow):
             p.set_range_mode(self.view.range)
 
     def _plot_title(self, ref: KzData) -> str:
-        """File name (or data title), plus '[N traces]' when the data holds more than one."""
+        """File name (or data title), plus '[N traces]' when the data holds more than one
+        and '[K streams]' when the file has streams that are not shown (SpecMan 'Re + i Im'
+        plots the first two of ax.raw)."""
         src = self.src if self.view.data_src_out == 1 else ref
         title = Path(src.filename).name if src.filename else (src.title or '')
         n = self._n_slices()
-        return f'{title}  [{n} traces]' if n > 1 else title
+        info = [f'{n} traces'] if n > 1 else []
+        raw = src.ax.get('raw')
+        k = raw.shape[2] if isinstance(raw, np.ndarray) and raw.ndim == 3 else 0
+        if k > 2 and src.ax.get('streams') is None:     # 'All streams' shows them as traces
+            info.append(f'{k} streams')
+        return f"{title}  [{', '.join(info)}]" if info else title
 
     # ================================================================ plugins
     def make_plugins(self, mode: str):

@@ -28,8 +28,8 @@ skill) or *min. imaginary* (Kazan3: minimise the imaginary parts of all harmonic
   *Show*: the absorption, the pseudo 1st harmonic at *Bm out* (what a small-modulation
   measurement would give, without overmodulation), pseudo vs measured H1, or the harmonics
   with the model.
-* *MH joint fit* - one Voigt (or Lorentzian) line fitted to all harmonics at once with Bm
-  free: position, widths, dBpp, Bm (a modulation calibration).
+* *MH joint fit* - one line fitted to all harmonics at once with Bm free: position,
+  width(s), dBpp, Bm (a modulation calibration). *Model*: Voigt, Lorentzian or Gaussian.
 * *Power saturation* - peak-to-peak of harmonic 1 for every slice against microwave power
   (reference 20 dBm minus the attenuation in ``ax.y``), with ``A sqrt(P) / (1 + P/Ps)^e``.
 
@@ -63,8 +63,8 @@ MODE_HINTS = [
     'The selected harmonics as one 2D set; the viewer slider steps through them.',
     'Absorption reconstructed from all harmonics together (Kalin, Gromov, Schweiger,\n'
     'JMR 160, 166 (2003)), no overmodulation distortion. Needs the true Bm.',
-    'One Voigt (or Lorentzian) line fitted to all harmonics at once with Bm free:\n'
-    'position, widths, dBpp and Bm (a modulation calibration). Bm is the start value.',
+    'One line (Model: Voigt, Lorentzian or Gaussian) fitted to all harmonics at once with\n'
+    'Bm free: position, widths, dBpp and Bm (a modulation calibration). Bm is the start value.',
     'Peak-to-peak of the first selected harmonic vs microwave power (slices, attenuation\n'
     'in ax.y), fitted with A sqrt(P) / (1 + P/Ps)^e: gives the saturation power Ps.']
 SHOW_HINTS = [
@@ -74,6 +74,13 @@ SHOW_HINTS = [
     'reconstruction and of the overmodulation.',
     'Each harmonic (blue) with the one predicted from the reconstructed absorption (red),\n'
     'as 2D sets: shows which harmonics do not fit.']
+LINE_MODELS = [('Voigt', 'voigt'), ('Lorentzian', 'lorentz'), ('Gaussian', 'gauss')]
+LINE_MODEL_HINTS = [
+    'Lorentzian (HWHM gamma) convolved with a Gaussian (sd sigma), both widths fitted:\n'
+    'a homogeneous line with inhomogeneous broadening (e.g. unresolved hyperfine).',
+    'Pure Lorentzian, one width (HWHM gamma): a homogeneous line (narrow trityl / OX lines);\n'
+    'faster and more stable than Voigt.',
+    'Pure Gaussian, one width (sd sigma): an inhomogeneously broadened line.']
 PHASE_FITS = [('principal axis', 'axis'), ('min. imaginary', 'imag')]
 SIGNS = [('Auto (H2 vs H1)', 'auto'), ('As recorded', 'as'), ('Alternate (-1)^(h-1)', 'alt')]
 COLORS = ['b', 'r', 'g', 'm', 'c', 'k']
@@ -300,13 +307,13 @@ class CWMH3(KazanPlugin):
             self.ddShow.addItem(label, key)
         row_('Show', self.ddShow, 'Which result of the reconstruction goes to the viewer '
              '(hover over an item for details)', SHOW_HINTS)
-        self.cbGauss = QCheckBox('Voigt (Gaussian part); off: Lorentzian')
-        self.cbGauss.setChecked(True)
-        row_('Line', self.cbGauss,
-             'Line shape of the joint fit.\n'
-             'On: Voigt, a Lorentzian convolved with a Gaussian (inhomogeneous broadening,\n'
-             'e.g. unresolved hyperfine); the Gaussian sd is fitted too.\n'
-             'Off: pure Lorentzian, one width; faster and more stable for narrow lines.')
+        self.ddModel = QComboBox()
+        for label, key in LINE_MODELS:
+            self.ddModel.addItem(label, key)
+        row_('Model', self.ddModel,
+             'Line model of the joint fit: one line at B0 with area A, seen through the\n'
+             'field modulation Bm (fitted) at every selected harmonic\n'
+             '(hover over an item for details)', LINE_MODEL_HINTS)
         self._method_rows = f
         v.addWidget(box)
 
@@ -339,7 +346,7 @@ class CWMH3(KazanPlugin):
                         (self.sbBmOut, mode == 'MH reconstruction'),
                         (self.sbMu, mode == 'MH reconstruction'),
                         (self.ddShow, mode == 'MH reconstruction'),
-                        (self.cbGauss, mode == 'MH joint fit')):
+                        (self.ddModel, mode == 'MH joint fit')):
             f.setRowVisible(wdg, on)
 
     def _source_changed(self, *_):
@@ -551,7 +558,7 @@ class CWMH3(KazanPlugin):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
         try:
-            r = mh.fit_harmonics(h, field, hs, bm0, gauss=self.cbGauss.isChecked())
+            r = mh.fit_harmonics(h, field, hs, bm0, shape=self.ddModel.currentData())
         finally:
             QApplication.restoreOverrideCursor()
         warn = []
@@ -564,9 +571,12 @@ class CWMH3(KazanPlugin):
         out = [self._trace(field, r['data'].T, 'harmonics', 'b', flabel, y=ys, ylabel='Harmonic, #'),
                self._trace(field, r['model'].T, 'joint fit', 'r', flabel, y=ys, ylabel='Harmonic, #')]
         self.Reports.setPlainText('\n'.join([
-            f"B0 {r['B0']:.4f} G   dBpp {r['dBpp'] * 1e3:.1f} mG",
-            f"Lorentz HWHM {r['gamma'] * 1e3:.1f} mG   Gauss sd {r['sigma'] * 1e3:.1f} mG",
-            f"Bm {r['Bm']:.4f} +- {r['Bm_err']:.4f} G  (set {bm0:g} G, ratio {r['Bm'] / bm0:.4f})",
+            f"Model: {self.ddModel.currentText()}",
+            f"B0 {r['B0']:.4f} G   dBpp {r['dBpp'] * 1e3:.1f} mG"]
+            + {'voigt': [f"Lorentz HWHM {r['gamma'] * 1e3:.1f} mG   Gauss sd {r['sigma'] * 1e3:.1f} mG"],
+               'lorentz': [f"Lorentz HWHM {r['gamma'] * 1e3:.1f} mG"],
+               'gauss': [f"Gauss sd {r['sigma'] * 1e3:.1f} mG"]}[r['shape']]
+            + [f"Bm {r['Bm']:.4f} +- {r['Bm_err']:.4f} G  (set {bm0:g} G, ratio {r['Bm'] / bm0:.4f})",
             f"chi2/dof {r['chi2']:.2f}",
             'harmonic  resid/sigma']
             + [f'H{hh:<3d} {v:8.2f}' for hh, v in zip(hs, r['resid_sigma'])]

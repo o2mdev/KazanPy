@@ -55,6 +55,9 @@ so you can chain processing steps.
 * *View* menu:
   * **Font** - Default or -4 ... +4 points. All controls, menus and plugin windows follow,
     and button and panel sizes grow with the font. The choice is kept in the ini file.
+    In the viewer window the font also follows the window size, as in MATLAB: it is scaled
+    by min(width / 1165, height / 860) (the default window size, 0.5 ... 2.5 times).
+    Plugin windows keep the *View > Font* size.
   * **Axis Tight / Auto / Manual** - how the range is set when data are plotted.
     *Select View Area* takes typed limits (`xmin xmax ymin ymax`) and switches to
     Manual.

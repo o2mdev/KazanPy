@@ -349,8 +349,10 @@ meaningful for harmonics with good SNR).
   would give, without overmodulation), pseudo vs measured H1, or the harmonics with the
   model. The report gives the pseudo-H1 peak-to-peak, the band limit (narrower lines are
   smoothed) and per harmonic weight, residual/noise and data/H1-model, with warnings.
-* **MH joint fit** - one Voigt (or Lorentzian) line fitted to all harmonics at once with
-  Bm free: position, Lorentz and Gauss widths, dBpp, Bm (a modulation calibration). Bm is
+* **MH joint fit** - one line fitted to all harmonics at once with Bm free: position,
+  width(s), dBpp, Bm (a modulation calibration). *Model*: Voigt (Lorentz HWHM and Gauss sd),
+  Lorentzian (HWHM) or Gaussian (sd); every harmonic is the line seen through the field
+  modulation, computed analytically in the Fourier domain. Bm is
   defined only for Bm >= ~2 dBpp; several lines need another model (warned in the report).
 * **Power saturation** - peak-to-peak of the first selected harmonic for every slice
   against microwave power (reference 20 dBm minus the attenuation in `ax.y`), with the fit

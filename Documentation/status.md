@@ -10,7 +10,8 @@
 * 2D data: vertical slice slider, X / Y slice direction, mouse wheel and Ctrl+U / Ctrl+D
   slice stepping, Cut Slice, Fix Source Processing.
 * Parameter row; zoom, measure and axis buttons.
-* Font: every control, menu and plugin window follows *View > Font*.
+* Font: every control, menu and plugin window follows *View > Font*; in the viewer window
+  it also scales with the window size.
 * Grid, minor grid, Aspect Normal / Square / Axis Equal, Select View Area.
 * File: Save Source (ASCII, SpecMan `.d01`, Bruker `.dsc` / `.par`, WinSIM `.lmb`),
   Convert Folder to ASCII, Export / Load Workspace (a Python console).
@@ -34,7 +35,6 @@ DESCRIPTION3, TRANSIENT3, RAPIDSCAN3, NOISE3, CWMH3, ANLPLG3. See [plugins.md](p
 
 ## Not ported yet
 
-* **Viewer**: the font does not follow the window size as MATLAB's did.
 * **Loaders**: UofC_bin, UofC_img, WEBMOSS, transient, RMNdat2D (no MATLAB source or
   helpers). See [loaders.md](loaders.md).
 * **Plugins**: SIMPLUGIN3 (needs EasySpin); CWPLUGIN3 LW-Md (unfinished in

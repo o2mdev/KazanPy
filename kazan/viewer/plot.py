@@ -92,10 +92,10 @@ class KazanPlot(pg.GraphicsLayoutWidget):
             a.setStyle(tickLength=6)  # positive = inward ticks, as in MATLAB
             a.enableAutoSIPrefix(False)
 
-    def set_font_size(self, size: int):
-        self.font_size = size
+    def set_font_size(self, size: float):
+        self.font_size = f'{size:g}'
         f = QFont()
-        f.setPointSize(max(size - 1, 6))
+        f.setPointSizeF(max(size - 1, 6))
         for p in (self.real, self.imag):
             for name in ('left', 'bottom'):
                 p.getAxis(name).setStyle(tickFont=f)

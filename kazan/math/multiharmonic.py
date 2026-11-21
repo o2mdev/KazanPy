@@ -225,13 +225,18 @@ def voigt_harmonics(b, hs, b0, gamma, sigma, area, bm) -> np.ndarray:
 
 
 def fit_harmonics(h, field, hs, bm0: float, sigma_n=None, edge: float = SNR_EDGE,
-                  gauss: bool = True, window: float | None = None) -> dict:
-    """Least-squares fit of one Voigt (or Lorentzian, ``gauss=False``) line to all harmonics
-    at once, Bm free. The harmonic ratios fix Bm independently of the line shape. Each
-    harmonic is weighted by 1/its edge noise; only |B - B0| < window (default bm0 + 1 G) is
-    fitted. Returns B0, gamma, sigma, area, Bm (+ error), dBpp, chi2/dof, residual/sigma per
-    harmonic and the model."""
+                  gauss: bool = True, window: float | None = None,
+                  shape: str | None = None) -> dict:
+    """Least-squares fit of one line to all harmonics at once, Bm free. ``shape``: 'voigt'
+    (Lorentzian HWHM gamma convolved with a Gaussian sd sigma), 'lorentz' (sigma = 0) or
+    'gauss' (gamma = 0); without it, ``gauss`` picks 'voigt' / 'lorentz'. The harmonic ratios
+    fix Bm independently of the line shape. Each harmonic is weighted by 1/its edge noise;
+    only |B - B0| < window (default bm0 + 1 G) is fitted. Returns B0, gamma, sigma, area,
+    Bm (+ error), dBpp, chi2/dof, residual/sigma per harmonic and the model."""
     from scipy.optimize import least_squares
+    shape = shape or ('voigt' if gauss else 'lorentz')
+    if shape not in ('voigt', 'lorentz', 'gauss'):
+        raise ValueError(f'unknown line shape {shape!r}')
     h = np.atleast_2d(np.asarray(h, float))
     b = np.asarray(field, float)
     hd = debase(h, edge)
@@ -241,11 +246,15 @@ def fit_harmonics(h, field, hs, bm0: float, sigma_n=None, edge: float = SNR_EDGE
     win = (bm0 + 1.0) if window is None else window
     sel = np.abs(b - b0s) < win
 
-    # parameters: B0, ln gamma, [ln sigma], area, Bm  (no Gaussian width for a Lorentzian)
+    # parameters: B0, ln width(s), area, Bm  (voigt: ln gamma, ln sigma; else one width)
+    nw = 2 if shape == 'voigt' else 1
+
     def unpack(p):
-        lw = np.exp(np.clip(p[1:3] if gauss else p[1:2], -30.0, 10.0))   # widths, no overflow
-        if gauss:
+        lw = np.exp(np.clip(p[1:1 + nw], -30.0, 10.0))   # widths, no overflow
+        if shape == 'voigt':
             return p[0], lw[0], lw[1], p[3], p[4]
+        if shape == 'gauss':
+            return p[0], 0.0, lw[0], p[2], p[3]
         return p[0], lw[0], 0.0, p[2], p[3]
 
     def model(p):
@@ -256,7 +265,7 @@ def fit_harmonics(h, field, hs, bm0: float, sigma_n=None, edge: float = SNR_EDGE
 
     starts = []
     for g0 in (0.02, 0.05, 0.2):
-        p0 = [b0s, np.log(g0)] + ([np.log(0.03)] if gauss else []) + [1.0, bm0]
+        p0 = [b0s, np.log(g0)] + ([np.log(0.03)] if nw == 2 else []) + [1.0, bm0]
         p0[-2] = np.ptp(hd[0]) / (np.ptp(model(p0)[0]) or 1)     # amplitude matched to H1
         starts.append((float(np.sum(resid(p0) ** 2)), p0))
     best = None
@@ -286,7 +295,7 @@ def fit_harmonics(h, field, hs, bm0: float, sigma_n=None, edge: float = SNR_EDGE
     rh = ((m - hd)[:, sel]).std(axis=1) / sig
     return {'B0': b0, 'gamma': gamma, 'sigma': sg, 'area': area, 'Bm': bm, 'Bm_err': err[-1],
             'dBpp': dbpp, 'chi2': chi2, 'resid_sigma': rh, 'model': m, 'data': hd, 'sel': sel,
-            'converged': bool(best.success)}
+            'converged': bool(best.success), 'shape': shape}
 
 
 # ---------------------------------------------------------------- harmonic phases (need I and Q)
