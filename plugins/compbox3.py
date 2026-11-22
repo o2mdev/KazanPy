@@ -6,7 +6,7 @@ normalisation, fit to the first trace, waterfall, join traces into 2D, ungroup 2
 sort, add all.
 
 Differences from MATLAB (see Documentation/plugins.md):
-* *Join Traces*, *Ungroup Data*, *Add Current To Output* and *Normalize Current 2D*
+* *Join Traces*, *Ungroup 2D* (MATLAB *Ungroup Data*), *Add Current To Output* and *Normalize Current 2D*
   work (in MATLAB they called undefined functions/fields and failed).
 * *Add All* and *Join Traces* also apply Zoom X and dB zoom, as the plot does.
 * *Change* keeps the colour of the trace; *Delete* / *Delete All* refresh the Output.
@@ -16,7 +16,7 @@ Differences from MATLAB (see Documentation/plugins.md):
 * *Add* / *Change* are *Add Source* / *Change from Source*; *Add Output* and *Change from
   Output* (new) take the viewer output. *Inverse Y*, *Delete All* and *Combine All
   Traces to 2D* (a check box: Output shows the traces combined, the traces are kept)
-  are in the *Options* button menu.
+  and *Source processing* (MATLAB's Load Options menu) are in the *Options* button menu.
 """
 from __future__ import annotations
 
@@ -77,6 +77,7 @@ class CompBox3(KazanPlugin):
         m.addAction('Fit All to 1st').triggered.connect(self.fit_all_to_first)
         m.addAction('Normalize Current 2D').triggered.connect(self.normalize_slices)
         m.addAction('Normalize All Traces').triggered.connect(self.normalize_all)
+        m.addAction('Clear Y All').triggered.connect(self.clear_y_all)
         m.addSeparator()
         self.mPreserveZero = QAction('Preserve Zero', self, checkable=True)
         self.mPreserveZero.triggered.connect(self.plot_this)
@@ -87,16 +88,17 @@ class CompBox3(KazanPlugin):
         m.addSeparator()
         m.addAction('Add Current To Output').triggered.connect(self.add_current_to_output)
         m.addAction('Join Traces').triggered.connect(self.join_traces)
-        m.addAction('Ungroup Data').triggered.connect(self.ungroup)
+        m.addAction('Ungroup 2D').triggered.connect(self.ungroup)
         m.addAction('Sort By Y Value').triggered.connect(self.sort_by_y)
         m.addAction('Add All').triggered.connect(self.add_all)
         self.mDisChanges = m.addAction('Discard ..2D')
         self.mDisChanges.triggered.connect(self.discard_2d)
         self.mDisChanges.setVisible(False)
-        m = self.menuBar().addMenu('Load Options')
+        # the Load Options menu (Source processing) is in the Options button menu
         self.mProcessSource = QAction('Source processing', self, checkable=True)
+        self.mProcessSource.setToolTip('Apply the viewer filter / derivative settings '
+                                       'stored with each trace')
         self.mProcessSource.triggered.connect(self.plot_this)
-        m.addAction(self.mProcessSource)
 
     def _build_ui(self):
         w = QWidget()
@@ -190,6 +192,7 @@ class CompBox3(KazanPlugin):
                                  'themselves are not changed')
         self.mCombine.toggled.connect(self.plot_this)
         self.mOptions.addAction(self.mCombine)
+        self.mOptions.addAction(self.mProcessSource)
         self.mOptions.addSeparator()
         self.mOptions.addAction('Delete All').triggered.connect(self.delete_all)
         self.bOptions = QPushButton('Options')
@@ -451,6 +454,14 @@ class CompBox3(KazanPlugin):
         self.update_interface()
         self.plot_this()
 
+    def clear_y_all(self):
+        """Clear Shift Y and Zoom Y of every trace."""
+        for t in self.traces:
+            t['shift_y'] = 0.0
+            t['zoom_y'] = self._zoom_value(1.0)
+        self.update_interface()
+        self.plot_this()
+
     def _normalize(self, t: dict):
         miny, maxy = _pp(t['data'].y)
         zmy = 1 / (maxy - miny) if maxy > miny else 1.0
@@ -473,6 +484,8 @@ class CompBox3(KazanPlugin):
     def fit_all_to_first(self):
         if len(self.traces) < 2:
             return
+        # the others are fitted to the first trace's raw amplitude: clear its Zoom Y
+        self.traces[0]['zoom_y'] = self._zoom_value(1.0)
         mn, mx = _pp(self.traces[0]['data'].y)
         for t in self.traces[1:]:
             t['zoom_x'], t['shift_x'] = 1.0, 0.0

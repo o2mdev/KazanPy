@@ -37,7 +37,13 @@ print('traces', [c.ddTraces.itemText(i) for i in range(c.ddTraces.count())], [o.
 c.spin['shift_x'].setValue(1.5); print('dx in out', w.out[1].ax.dx)
 pl = [it for it in w.plot.real.listDataItems()]; print('plotted x0 of trace2', pl[-1].xData[0])
 c.to_first(); t = c.traces[1]; print('to first zoom/shift', round(t['zoom_y'],4), round(t['shift_y'],4))
-c.ddUnits.setCurrentText('dB'); print('dB zoom', round(c.traces[1]['zoom_y'],4)); c.ddUnits.setCurrentText('linear')
+c.traces[0]['zoom_y'] = 3.0; c.fit_all_to_first(); assert c.traces[0]['zoom_y'] == 1.0
+c.ddUnits.setCurrentText('dB'); c.traces[0]['zoom_y'] = 6.0; c.fit_all_to_first()
+assert c.traces[0]['zoom_y'] == 0.0; c.ddUnits.setCurrentText('linear')
+for t in c.traces: t['shift_y'], t['zoom_y'] = 2.0, 3.0
+acts = {a.text(): a for a in c.menuBar().actions()[0].menu().actions()}; acts['Clear Y All'].trigger()
+assert all(t['shift_y'] == 0 and t['zoom_y'] == 1 for t in c.traces)
+c.to_first(); c.ddUnits.setCurrentText('dB'); print('dB zoom', round(c.traces[1]['zoom_y'],4)); c.ddUnits.setCurrentText('linear')
 c.normalize_all(); print('norm', [(round(t['zoom_y'],3), round(t['shift_y'],3)) for t in c.traces])
 c.ddTraces.setCurrentIndex(0); c.normalize_slices(); print('norm2d out range', np.round([np.real(w.out[0].y).min(axis=0).max(), np.real(w.out[0].y).max(axis=0).min()],3), c.mDisChanges.isVisible())
 c.discard_2d()
@@ -62,7 +68,8 @@ assert t['shift_y'] == 0.75 and t['data'].ax.Color == col0 and c.ddTraces.itemTe
 assert np.allclose(np.real(t['data'].y), np.real(f2.y)) and len(c.traces) == n0 + 2
 # Options menu: Inverse Y, Combine All Traces to 2D, Delete All
 acts = {a.text(): a for a in c.bOptions.menu().actions() if a.text()}
-assert set(acts) == {'Inverse Y', 'Combine All Traces to 2D', 'Delete All'}, set(acts)
+assert set(acts) == {'Inverse Y', 'Combine All Traces to 2D', 'Source processing', 'Delete All'}, set(acts)
+assert [m.title() for m in c.menuBar().findChildren(type(c.mOptions)) if m.title()] == ['Processing']
 acts['Inverse Y'].trigger(); assert c.traces[0]['ysign'] == -1
 for t in c.traces: t['shift_x'] = 0
 acts['Combine All Traces to 2D'].trigger()          # check box: output only

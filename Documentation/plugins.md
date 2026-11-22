@@ -120,8 +120,8 @@ and sign.
 * **Change from Source** / **Change from Output** replace the current trace and keep its
   colour. *From Output* uses the first output trace and takes its shifts, as *Add
   Output* does.
-* The **Options** button opens a menu with *Inverse Y*, *Combine All Traces to 2D* and
-  *Delete All*. *Combine All Traces to 2D* is a check box. While it is on, Output
+* The **Options** button opens a menu with *Inverse Y*, *Combine All Traces to 2D*,
+  *Source processing* (was the *Load Options* menu) and *Delete All*. *Combine All Traces to 2D* is a check box. While it is on, Output
   shows all traces (every column of each) as one 2D set on a common X axis, over the
   range where they overlap. The traces stay as they are, and editing them updates the
   combined output. *Processing > Join Traces* makes the same combination but replaces
@@ -132,17 +132,22 @@ and sign.
 *Processing* menu:
 
 * Normalize the current trace, all traces, or the slices of 2D data.
+* Clear Y All: clears Shift Y and Zoom Y of every trace.
 * Fit traces to the first one.
 * Waterfall.
 * Add Current To Output; Add All (sum of all traces).
-* Join Traces into a 2D set (spline onto a common axis); Ungroup 2D data.
+* Join Traces into a 2D set (spline onto a common axis); *Ungroup 2D* (split a 2D
+  trace into one trace per slice).
 * Sort By Y Value.
 
 Differences from MATLAB:
 
-* *Join Traces*, *Ungroup Data*, *Add Current To Output* and *Normalize Current 2D*
-  work. In MATLAB they called undefined functions or fields and failed.
+* *Join Traces*, *Ungroup 2D* (MATLAB *Ungroup Data*), *Add Current To Output* and
+  *Normalize Current 2D* work. In MATLAB they called undefined functions or fields and
+  failed.
 * *Add All* and *Join Traces* also apply Zoom X and dB zoom, as the plot does.
+* *Fit All to 1st* first clears the first trace's Zoom Y, since the others are fitted
+  to its raw amplitude.
 * *Change* keeps the colour of the trace. *Delete* / *Delete All* refresh the Output.
 * The second-dimension field is editable. It sets the trace's Y axis value, which *Sort
   By Y Value* and *Join Traces* use.
