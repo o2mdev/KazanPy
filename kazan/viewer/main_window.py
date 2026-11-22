@@ -564,6 +564,8 @@ class KazanViewer(QMainWindow):
         m.addAction('Fix Source Processing', self._menu_fix_processing)
         m.addAction('Cut Slice', self._menu_cut_slice)
         m.addAction('Show Load Script', lambda: self.set('log', self.src.script or '(none)'))
+        m.addSeparator()
+        m.addAction('Python Console', lambda: self._menu_workspace('console'))   # = File > Workspace Console
 
         self.mPluginsMain = mb.addMenu('Plugins')
 

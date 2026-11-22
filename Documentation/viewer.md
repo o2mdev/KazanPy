@@ -160,10 +160,11 @@ were loaded.
 
 ### Workspace Console
 
-*File > Workspace Console* opens a Python console in a separate window. It is
-pyqtgraph's console, with multi-line input (`for` / `def` blocks), command history
-(Up / Down) that is kept between sessions in `kazan_console_history.pkl` next to the
-ini file, and an exception viewer. It runs inside the viewer, so it works on the live
+*File > Workspace Console* (also *Tools > Python Console*) opens a Python console in a
+separate window. It is pyqtgraph's console, with multi-line input (`for` / `def`
+blocks), command history (Up / Down) that is kept between sessions in
+`kazan_console_history.pkl` next to the ini file, and an exception viewer. It runs
+inside the viewer, so it works on the live
 data:
 
 | Name | Meaning |

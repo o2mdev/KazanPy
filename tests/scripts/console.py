@@ -23,6 +23,10 @@ act.trigger(); app.processEvents()
 c = console.WorkspaceConsole.instance()
 assert c.isVisible() and c.isWindow() and c.parent() is None
 act.trigger(); assert console.WorkspaceConsole.instance() is c, 'one console'
+tools = [a for m in w.menuBar().actions() if m.text() == 'Tools'
+         for a in m.menu().actions() if a.text() == 'Python Console'][0]
+c.hide(); tools.trigger(); app.processEvents()
+assert c.isVisible() and console.WorkspaceConsole.instance() is c, 'Tools opens the same console'
 
 c.run("d = src(); d.y = d.y ** 2; d.title = 'sq'; show(d)")
 assert len(w.out) == 1 and np.allclose(w.out[0].y[:, 0], x ** 2) and w.out[0].title == 'sq'
