@@ -324,6 +324,7 @@ class CWMH3(KazanPlugin):
         row = QHBoxLayout()
         self.cbUpdate = QCheckBox('Update when file changes')
         self.cbUpdate.setChecked(True)
+        self.set_update_checkbox(self.cbUpdate)
         self.CalculateButton = QPushButton('Calculate')
         self.CalculateButton.setMinimumHeight(30)
         row.addWidget(self.cbUpdate)
@@ -564,6 +565,10 @@ class CWMH3(KazanPlugin):
         warn = []
         if r['Bm'] < 2 * r['dBpp']:
             warn.append(f"Bm < 2 dBpp: Bm is not defined by the harmonics (use Bm >= 2 dBpp)")
+        if r['outside_sigma'] > 3:
+            warn.append(f"signal outside the fit window |B - B0| < {r['window']:.3g} G "
+                        f"(H1 rms {r['outside_sigma']:.0f} x noise there): another line? It is "
+                        'not fitted; the joint fit models one line (use MH reconstruction)')
         if r['chi2'] > 3:
             warn.append('chi2 > 3: one line does not describe the data (several lines? '
                         'harmonic phases? Bm above the band limit?)')

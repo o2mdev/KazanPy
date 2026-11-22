@@ -120,6 +120,7 @@ class RapidScan3(KazanPlugin):
             g.setColumnStretch(c, 1)
 
         self.cbFileUpdate = QCheckBox('Update')
+        self.set_update_checkbox(self.cbFileUpdate)
         g.addWidget(self.cbFileUpdate, 0, 2)
 
         self.pbFilter = _state('Use filter')

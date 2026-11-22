@@ -108,6 +108,7 @@ class Noise3(KazanPlugin):
         g.setContentsMargins(5, 5, 5, 5)
         g.setSpacing(5)
         self.cbFileUpdate = QCheckBox('Update')
+        self.set_update_checkbox(self.cbFileUpdate)
         g.addWidget(self.cbFileUpdate, 0, 1)
         self.ClearRefButton = QPushButton('Clear Ref')
         self.pbSetReference = QPushButton('Set Reference')

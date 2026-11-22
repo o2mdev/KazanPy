@@ -96,6 +96,9 @@ HELP = {
         "    menu_name = 'MYPLUGIN'      - name in the Plugins menu",
         '    __init__(self, host, guid)   - initialization',
         '    file_update(self)            - called when data are loaded', '',
+        'Only the active plugin gets file_update: the one with its Update',
+        'box checked (checking one clears the others), else the plugin',
+        'window without an Update box that was activated last.', '',
         'Plugins use:',
         "    src = self.host.get_data('source')    - data (a copy)",
         "    src = self.host.get_data('psource')   - processed data",
@@ -201,6 +204,10 @@ class KazanViewer(QMainWindow):
         self.src: KzData = verify(KzData())
         self.out: list[KzData] = []
         self.plugins: list[KazanPlugin] = []
+        # plugins by window activation, most recent last
+        self._plugin_mru: list[KazanPlugin] = []
+        self._plugin_pinned: KazanPlugin | None = None   # its Update box is checked
+        self._in_file_update = False
         self.plugin_infos: list[PluginInfo] = []
         self.view = View()
         self.view.default_font = QApplication.font().pointSize()
@@ -669,6 +676,9 @@ class KazanViewer(QMainWindow):
 
     def plugin_closed(self, plugin):
         self.plugins = [p for p in self.plugins if p is not plugin]
+        self._plugin_mru = [p for p in self._plugin_mru if p is not plugin]
+        if self._plugin_pinned is plugin:
+            self._plugin_pinned = None
         print(f'Plugin removed. {len(self.plugins)} left.')
 
     # ================================================================ data
@@ -754,6 +764,7 @@ class KazanViewer(QMainWindow):
         self._fill_parameter_list()
         self.update_slider()
         self.sourceChanged.emit()
+        self._plugin_file_update()
         self.plot_data()
 
     def _n_slices(self) -> int:
@@ -1083,6 +1094,45 @@ class KazanViewer(QMainWindow):
         m.addAction('Arrange plugins', self._arrange_plugins)
         m.addAction('Reload plugins', lambda: self.make_plugins('search'))
 
+    def plugin_activated(self, plugin):
+        if any(p is plugin for p in self.plugins):
+            self._plugin_mru = [p for p in self._plugin_mru if p is not plugin] + [plugin]
+
+    def plugin_update(self, plugin, on):
+        if not any(p is plugin for p in self.plugins):
+            return
+        if on:
+            self._plugin_pinned = plugin
+            for p in self.plugins:
+                if p is not plugin:
+                    p.set_update(False)
+        elif self._plugin_pinned is plugin:
+            self._plugin_pinned = None
+
+    @property
+    def active_plugin(self) -> KazanPlugin | None:
+        """The plugin that receives file_update: the one with its Update box checked,
+        else the most recently activated plugin that has no Update box."""
+        if self._plugin_pinned is not None:
+            return self._plugin_pinned
+        free = [p for p in self._plugin_mru if p.update_checkbox is None]
+        return free[-1] if free else None
+
+    def _plugin_file_update(self):
+        """MATLAB FileUpdate, sent to the active plugin only. A source set from
+        inside file_update does not re-enter it."""
+        plugin = self.active_plugin
+        if plugin is None or self._in_file_update:
+            return
+        self._in_file_update = True
+        try:
+            plugin.file_update()
+        except Exception:
+            traceback.print_exc()
+            self.set('message', f'{plugin.windowTitle()}: update failed, see console')
+        finally:
+            self._in_file_update = False
+
     def launch_plugin(self, info: PluginInfo):
         try:
             plugin = info.cls(self, uuid.uuid4().hex)
@@ -1093,6 +1143,10 @@ class KazanViewer(QMainWindow):
         if not plugin.windowTitle():
             plugin.setWindowTitle(info.label)
         self.plugins.append(plugin)
+        self.plugin_activated(plugin)     # a new plugin starts active
+        cb = plugin.update_checkbox
+        if cb is not None and cb.isChecked():
+            self.plugin_update(plugin, True)
         plugin.show()
         print(f'Plugin is added. Overall {len(self.plugins)}')
 

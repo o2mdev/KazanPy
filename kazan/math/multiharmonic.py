@@ -293,8 +293,12 @@ def fit_harmonics(h, field, hs, bm0: float, sigma_n=None, edge: float = SNR_EDGE
     ds = np.gradient(s, x)
     dbpp = abs(x[np.argmax(ds)] - x[np.argmin(ds)])
     rh = ((m - hd)[:, sel]).std(axis=1) / sig
+    # signal the fit did not see (another line outside the window): H1 rms / noise there
+    rest = ~sel & ~edge_mask(b.size, edge)
+    outside = float(hd[0, rest].std() / sig[0]) if rest.sum() > 2 else 0.0
     return {'B0': b0, 'gamma': gamma, 'sigma': sg, 'area': area, 'Bm': bm, 'Bm_err': err[-1],
             'dBpp': dbpp, 'chi2': chi2, 'resid_sigma': rh, 'model': m, 'data': hd, 'sel': sel,
+            'window': win, 'outside_sigma': outside,
             'converged': bool(best.success), 'shape': shape}
 
 

@@ -30,8 +30,8 @@ from __future__ import annotations
 import numpy as np
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (QCheckBox, QGridLayout, QGroupBox, QLabel, QPlainTextEdit,
-                               QPushButton, QTabWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QGridLayout, QGroupBox, QLabel, QHBoxLayout,
+                               QPlainTextEdit, QPushButton, QTabWidget, QVBoxLayout, QWidget)
 from scipy.special import erf
 
 from kazan.core import KazanPlugin
@@ -149,9 +149,6 @@ class ANLPLG3(KazanPlugin):
         v = QVBoxLayout(w)
         v.setContentsMargins(4, 4, 4, 4)
         v.setSpacing(2)
-        self.UpdateonfilechangeCheckBox = QCheckBox('Update on file change')
-        v.addWidget(self.UpdateonfilechangeCheckBox)
-
         self.TabGroupFittingMethods = QTabWidget()
         self.TabGroupFittingMethods.addTab(self._fit_tab('SE'), 'SE')
         self.TabGroupFittingMethods.addTab(
@@ -192,15 +189,23 @@ class ANLPLG3(KazanPlugin):
                                  ((3, 2), 'Residue offset', self.ResidueoffsetSpinner)):
             g.addWidget(QLabel(text), r, c)
             g.addWidget(sp, r, c + 1)
-        self.ComputeButton = QPushButton('Compute')
-        g.addWidget(self.ComputeButton, 4, 1, 1, 2)
         v.addWidget(self.FittingparametersPanel)
 
         self.tOutput = QPlainTextEdit()
         self.tOutput.setReadOnly(True)
+        self.tOutput.setMinimumHeight(160)
         v.addWidget(self.tOutput, 1)
+        row = QHBoxLayout()
+        self.UpdateonfilechangeCheckBox = QCheckBox('Update when file changes')
+        self.set_update_checkbox(self.UpdateonfilechangeCheckBox)
+        self.ComputeButton = QPushButton('Calculate')
+        self.ComputeButton.setMinimumHeight(30)
+        self.ComputeButton.setToolTip('Run the selected tab: fit, Light-Dark or Phase')
+        row.addWidget(self.UpdateonfilechangeCheckBox)
+        row.addWidget(self.ComputeButton, 1)
+        v.addLayout(row)
 
-        self.ComputeButton.clicked.connect(self.compute)
+        self.ComputeButton.clicked.connect(self.calculate)
         self.ShowresiduexSpinner.valueChanged.connect(self.compute)
         self.ResidueoffsetSpinner.valueChanged.connect(self.compute)
         self.BaselineButton.clicked.connect(self.pick_baseline)
@@ -216,13 +221,17 @@ class ANLPLG3(KazanPlugin):
     # ================================================================ host
     def file_update(self):
         if self.UpdateonfilechangeCheckBox.isChecked():
-            name = self._tab()
-            if name == 'Light-Dark':
-                self.light_dark()
-            elif name == 'Phase':
-                self.phase_correction()
-            else:
-                self.compute()
+            self.calculate()
+
+    def calculate(self, *_):
+        """Run the selected tab (Calculate button and file updates)."""
+        name = self._tab()
+        if name == 'Light-Dark':
+            self.light_dark()
+        elif name == 'Phase':
+            self.phase_correction()
+        else:
+            self.compute()
 
     def show_message(self, message, flag=''):
         self.tOutput.setPlainText(message)

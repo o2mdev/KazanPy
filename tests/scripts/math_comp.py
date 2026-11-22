@@ -48,6 +48,32 @@ c.sort_by_y(); print('sorted y', [float(np.ravel(t['data'].ax.y)[0]) for t in c.
 for t in c.traces: t['shift_x']=0
 c.join_traces(); print('join', c.traces[0]['data'].y.shape, c.ddTraces.itemText(0), c.traces[0]['data'].ax.y)
 c.add_current_to_output(); print('cur to out', len(w.out))
+n0 = len(c.traces); fit = w.out[0].copy(); fit.ax.s = 0.25; fit.ax.dx = -0.5; fit.title = 'fit'
+w.set_data('output', [fit, fit]); c.bAddOutput.click()
+t = c.traces[-1]; assert len(c.traces) == n0 + 2 and t['shift_y'] == 0.25 and t['shift_x'] == -0.5, t
+assert c.ddTraces.itemText(len(c.traces) - 1).endswith(':fit') and len(w.out) == n0 + 2
+w.set_data('output', []); c.add_output(); assert len(c.traces) == n0 + 2
+print('add output', len(c.traces), c.bAdd.text(), '|', c.bAddOutput.text())
+# Change from Output: current trace replaced, colour kept, shifts from the output
+c.ddTraces.setCurrentIndex(0); col0 = c.traces[0]['data'].ax.Color
+f2 = fit.copy(); f2.y = f2.y * 3; f2.ax.s = 0.75; f2.title = 'fit2'
+w.set_data('output', [f2]); c.bChangeOutput.click(); t = c.traces[0]
+assert t['shift_y'] == 0.75 and t['data'].ax.Color == col0 and c.ddTraces.itemText(0) == '1:fit2'
+assert np.allclose(np.real(t['data'].y), np.real(f2.y)) and len(c.traces) == n0 + 2
+# Options menu: Inverse Y, Combine All Traces to 2D, Delete All
+acts = {a.text(): a for a in c.bOptions.menu().actions() if a.text()}
+assert set(acts) == {'Inverse Y', 'Combine All Traces to 2D', 'Delete All'}, set(acts)
+acts['Inverse Y'].trigger(); assert c.traces[0]['ysign'] == -1
+for t in c.traces: t['shift_x'] = 0
+acts['Combine All Traces to 2D'].trigger()          # check box: output only
+assert acts['Combine All Traces to 2D'].isChecked() and len(c.traces) == n0 + 2
+ncol = sum(t['data'].y.shape[1] for t in c.traces)   # every column of every trace
+assert len(w.out) == 1 and w.out[0].y.shape[1] == ncol, [o.y.shape for o in w.out]
+c.spin['shift_y'].setValue(5.0); assert len(w.out) == 1      # stays combined on edits
+acts['Combine All Traces to 2D'].trigger(); assert len(w.out) == n0 + 2
+acts['Delete All'].trigger(); assert not c.traces
+c.add(); c.change_output(); assert len(c.traces) == 1
+print('options ok')
 app.processEvents(); w.grab().save(str(S/'comp_viewer.png')); c.grab().save(str(S/'comp_plugin.png'))
 c.delete_all(); print('after delete', len(w.out), c.ddTraces.itemText(0))
 c.close(); m = launch('MATHPLUGIN3'); m.grab().save(str(S/'math_plugin.png')); m.close(); w.close(); print('OK')

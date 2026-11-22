@@ -36,8 +36,23 @@ class MyPlugin(KazanPlugin):
 | `Ginput(n)` | `ginput(n)` - blocking, returns a `(k, 2)` array |
 | `MakePlugins('close', app)` | automatic when the window closes |
 
-Signals: `host.sourceChanged` (a new source; the base class calls `file_update`) and
-`host.sliceChanged(int)`.
+`file_update` goes to the **active plugin only**. Other open plugins are not called,
+so they do not all recompute and overwrite each other's output.
+
+* A plugin with an *Update* checkbox registers it in `__init__` with
+  `self.set_update_checkbox(cb)`. Checking that box makes the plugin active and clears
+  the *Update* box in every other plugin. A box that starts checked makes the plugin
+  active when it launches. Clicking the window of a plugin like this does not change
+  which plugin is active.
+* If no *Update* box is checked, the active plugin is the most recently activated
+  window among the plugins without an *Update* box. A newly launched plugin of that
+  kind starts active.
+
+If `file_update` itself calls `set_data('source', ...)`, the host does not call
+`file_update` again.
+
+Signals: `host.sourceChanged` (a new source; emitted to everyone, connect to it only
+if a background plugin really must see every file) and `host.sliceChanged(int)`.
 
 ## Data conventions
 

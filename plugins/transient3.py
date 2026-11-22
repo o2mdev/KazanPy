@@ -126,6 +126,7 @@ class transient3(KazanPlugin):  # noqa: N801 - MATLAB name
         self.pbMarkField = _cross('Mark the field of the time-domain trace', 'Mark field')
         self.cbFileUpdate = QCheckBox('Update when file changes')
         self.cbFileUpdate.setChecked(True)
+        self.set_update_checkbox(self.cbFileUpdate)
         top.addWidget(self.pbTimeField)
         top.addWidget(self.pbMarkField)
         top.addStretch(1)

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Union
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QMainWindow
 
 if TYPE_CHECKING:
@@ -35,7 +35,9 @@ SetKey = Literal['font', 'slice', 'cursor', 'message', 'log', 'log_clear', 'log_
 class KazanHost(Protocol):
     """Everything a plugin may use from the viewer."""
 
-    #: emitted after a new source is loaded or set (MATLAB: plugin FileUpdate)
+    #: emitted to everyone after a new source is loaded or set. ``file_update``
+    #: (MATLAB FileUpdate) is not driven by it: the host calls that on the active
+    #: plugin only.
     sourceChanged: SignalInstance
     #: emitted with the new 0-based slice index
     sliceChanged: SignalInstance
@@ -63,6 +65,14 @@ class KazanHost(Protocol):
     def plugin_closed(self, plugin: KazanPlugin) -> None:
         """Called by the plugin when it closes (MATLAB ``MakePlugins('close', app)``)."""
 
+    def plugin_activated(self, plugin: KazanPlugin) -> None:
+        """Called by the plugin when its window is activated (see
+        :class:`KazanPlugin` for who receives ``file_update``)."""
+
+    def plugin_update(self, plugin: KazanPlugin, on: bool) -> None:
+        """Called when the plugin's *Update* checkbox is toggled. Checked: the plugin
+        becomes active and the other plugins' *Update* boxes are cleared."""
+
 
 class KazanPlugin(QMainWindow):
     """Base class of all plugins (one window per running instance).
@@ -70,6 +80,14 @@ class KazanPlugin(QMainWindow):
     Subclass, build the UI in ``__init__`` (after ``super().__init__``), override
     :meth:`file_update` if the plugin should react to a newly loaded file.
     Windows are independent top-level windows, as in MATLAB.
+
+    Only the *active* plugin gets :meth:`file_update`, so open plugins do not all
+    recompute and fight over the output:
+
+    * a plugin with a checked *Update* checkbox (registered with
+      :meth:`set_update_checkbox`) is active. Checking one clears all the others;
+    * otherwise the active plugin is the most recently activated window among the
+      plugins that have no *Update* checkbox (a new one starts active).
     """
 
     #: label in the Plugins menu; defaults to the file name in upper case
@@ -80,13 +98,35 @@ class KazanPlugin(QMainWindow):
         self.host = host
         self.guid = guid
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        #: the plugin's "Update when file changes" box, see set_update_checkbox
+        self.update_checkbox = None
         if self.menu_name:
             self.setWindowTitle(self.menu_name)
-        # Disconnected automatically by Qt when the window is destroyed.
-        host.sourceChanged.connect(self.file_update)
+
+    def set_update_checkbox(self, cb) -> None:
+        """Register the plugin's *Update* checkbox. Checking it makes this plugin the
+        active one and clears the box in every other plugin; the host keeps it in sync
+        via :meth:`set_update`. Call it in ``__init__``; the box's initial state is
+        honored when the plugin launches."""
+        self.update_checkbox = cb
+        cb.toggled.connect(lambda on: self.host.plugin_update(self, bool(on)))
+
+    def set_update(self, on: bool) -> None:
+        """Host side: show whether this plugin follows new files (no signal)."""
+        cb = self.update_checkbox
+        if cb is not None and cb.isChecked() != on:
+            cb.blockSignals(True)
+            cb.setChecked(on)
+            cb.blockSignals(False)
 
     def file_update(self) -> None:
-        """Called when a new source is loaded (MATLAB ``FileUpdate``)."""
+        """Called on the active plugin when a new source is loaded (MATLAB
+        ``FileUpdate``)."""
+
+    def event(self, e):
+        if e.type() == QEvent.Type.WindowActivate:
+            self.host.plugin_activated(self)
+        return super().event(e)
 
     def closeEvent(self, event):
         self.host.plugin_closed(self)

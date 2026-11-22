@@ -112,6 +112,23 @@ Comparison box. It collects snapshots of the viewer source as traces and shows t
 together in Output. Each trace has its own colour, X/Y shift, X/Y zoom (linear or dB)
 and sign.
 
+* **Add Source** adds the viewer source as a new trace.
+* **Add Output** adds every trace shown in the viewer output as a new trace. Use it
+  to compare, for example, a fit from another plugin. A trace's Y shift (`ax.s`) and
+  X shift (`ax.dx`) become its Shift Y / Shift X. Output data are already processed,
+  so their filter and derivative settings are cleared.
+* **Change from Source** / **Change from Output** replace the current trace and keep its
+  colour. *From Output* uses the first output trace and takes its shifts, as *Add
+  Output* does.
+* The **Options** button opens a menu with *Inverse Y*, *Combine All Traces to 2D* and
+  *Delete All*. *Combine All Traces to 2D* is a check box. While it is on, Output
+  shows all traces (every column of each) as one 2D set on a common X axis, over the
+  range where they overlap. The traces stay as they are, and editing them updates the
+  combined output. *Processing > Join Traces* makes the same combination but replaces
+  the traces with it.
+* The field above the buttons holds the second-dimension (Y) value(s) of the current
+  trace, one per column. *Sort By Y Value* and the 2D combination use them.
+
 *Processing* menu:
 
 * Normalize the current trace, all traces, or the slices of 2D data.
@@ -130,6 +147,8 @@ Differences from MATLAB:
 * The second-dimension field is editable. It sets the trace's Y axis value, which *Sort
   By Y Value* and *Join Traces* use.
 * The trace list shows the file name without the folder.
+* *Add Output* and *Change from Output* are new. MATLAB's *Add* and *Change* only took
+  the source. *Inverse Y* and *Delete All* moved to the *Options* button.
 
 ## MINUSBOX3
 
@@ -353,7 +372,10 @@ meaningful for harmonics with good SNR).
   width(s), dBpp, Bm (a modulation calibration). *Model*: Voigt (Lorentz HWHM and Gauss sd),
   Lorentzian (HWHM) or Gaussian (sd); every harmonic is the line seen through the field
   modulation, computed analytically in the Fourier domain. Bm is
-  defined only for Bm >= ~2 dBpp; several lines need another model (warned in the report).
+  defined only for Bm >= ~2 dBpp. It models one line and fits only |B - B0| < Bm + 1 G
+  around the strongest one: a second line inside that window gives chi2 > 3, one outside
+  it gives the warning "signal outside the fit window". For several lines use MH
+  reconstruction, which assumes no line shape.
 * **Power saturation** - peak-to-peak of the first selected harmonic for every slice
   against microwave power (reference 20 dBm minus the attenuation in `ax.y`), with the fit
   `A sqrt(P) / (1 + P/Ps)^e` (in log space, so amplitudes of any size fit).
@@ -389,7 +411,7 @@ Typical use, as the SE tab says:
 2. Pick the time offset with the cross. On the SE and DE tabs this also sets the
    first point.
 3. Adjust *First Point* / *Last Point*.
-4. Press **Compute**.
+4. Press **Calculate** (below the results; it runs the selected tab).
 
 *Fitting parameters*:
 
