@@ -1,17 +1,21 @@
 """The workspace: a Python namespace and console that stand in for the MATLAB base
 workspace and command window (*File > Export Src to Workspace* and friends).
+
+The console is a pyqtgraph :class:`~pyqtgraph.console.ConsoleWidget` in its own window
+(multi-line input, command history kept between sessions, exception viewer). It runs in
+the viewer's process and GUI thread: it works on the live viewer, and a long
+computation blocks the viewer until it finishes.
 """
 from __future__ import annotations
 
-import code
-import contextlib
-import io
 import sys
+from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QKeyEvent
-from PySide6.QtWidgets import QLineEdit, QMainWindow, QPlainTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QMainWindow
+from pyqtgraph.console import ConsoleWidget
+
+from ..core.data import KzData, Struct, verify
 
 #: the "base workspace" shared by all viewers and the console
 WORKSPACE: dict = {'np': np}
@@ -33,67 +37,69 @@ def lookup(name: str):
     return getattr(sys.modules.get('__main__'), name, None)
 
 
-class _Input(QLineEdit):
-    """Command line with Up / Down history."""
+def _viewer():
+    v = WORKSPACE.get('viewer')
+    if v is None:
+        raise RuntimeError('no viewer: open the console from a Kazan window')
+    return v
 
-    def __init__(self, run):
-        super().__init__()
-        self._run, self._history, self._pos = run, [], 0
-        self.returnPressed.connect(self._enter)
 
-    def _enter(self):
-        text = self.text()
-        if text.strip():
-            self._history.append(text)
-        self._pos = len(self._history)
-        self.clear()
-        self._run(text)
+def _show(*data):
+    items = list(data[0]) if len(data) == 1 and isinstance(data[0], (list, tuple)) else list(data)
+    _viewer().set_data('output', items)
 
-    def keyPressEvent(self, e: QKeyEvent):
-        if e.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down) and self._history:
-            self._pos = max(0, min(len(self._history), self._pos + (-1 if e.key() == Qt.Key.Key_Up else 1)))
-            self.setText(self._history[self._pos] if self._pos < len(self._history) else '')
-            return
-        super().keyPressEvent(e)
+
+# helpers on the viewer the console was last opened from (WORKSPACE['viewer'])
+WORKSPACE.update({
+    'src': lambda: _viewer().get_data('source'),
+    'psrc': lambda: _viewer().get_data('psource'),
+    'out': lambda: _viewer().get_data('output'),
+    'show': _show,
+    'plugins': lambda: list(_viewer().plugins),
+    'active': lambda: _viewer().active_plugin,
+    'KzData': KzData, 'Struct': Struct, 'verify': verify,
+})
+
+INTRO = """Kazan workspace (Python). Names:
+  viewer         the Kazan window (plugin host API: get_data, set_data, get, set, ...)
+  src() psrc()   copies of the source / processed source
+  out()          copies of the output traces;  show(d, ...)  put KzData into the output
+  plugins()      open plugin windows;  active()  the plugin that gets file_update
+  exp_src exp_out  data from File > Export Src / Out to Workspace
+  np KzData Struct verify
+Example:  d = src(); d.y = d.y ** 2; show(d)
+"""
 
 
 class WorkspaceConsole(QMainWindow):
-    """A small Python console on :data:`WORKSPACE`."""
+    """Python console on :data:`WORKSPACE`, one window shared by all viewers."""
 
     _instance: WorkspaceConsole | None = None
 
     @classmethod
-    def instance(cls) -> WorkspaceConsole:
+    def instance(cls, history_file: Path | None = None) -> WorkspaceConsole:
+        """The console window; ``history_file`` is used when it is first made."""
         if cls._instance is None:
-            cls._instance = cls()
+            cls._instance = cls(history_file)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, history_file: Path | None = None):
         super().__init__()
         self.setWindowTitle('Kazan Workspace')
-        self.resize(640, 400)
-        w = QWidget()
-        v = QVBoxLayout(w)
-        self.out = QPlainTextEdit(readOnly=True)
-        self.out.setFont(QFont('Consolas'))
-        self.inp = _Input(self.run)
-        self.inp.setFont(QFont('Consolas'))
-        v.addWidget(self.out, 1)
-        v.addWidget(self.inp)
-        self.setCentralWidget(w)
-        self._console = code.InteractiveConsole(WORKSPACE)
-        self.write('Python workspace. exp_src / exp_out hold exported data; '
-                   'viewer is the Kazan window.\n')
+        self.resize(720, 460)
+        self.console = ConsoleWidget(namespace=WORKSPACE, text=INTRO,
+                                     historyFile=str(history_file) if history_file else None)
+        self.setCentralWidget(self.console)
+        #: the output pane (QPlainTextEdit)
+        self.out = self.console.output
 
     def write(self, text: str):
+        """Print a message in the console."""
+        # not repl.write: in pyqtgraph 0.14 it fails before the first command
         self.out.moveCursor(self.out.textCursor().MoveOperation.End)
         self.out.insertPlainText(text)
         self.out.ensureCursorVisible()
 
     def run(self, line: str):
-        prompt = '... ' if getattr(self, '_more', False) else '>>> '
-        self.write(prompt + line + '\n')
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-            self._more = self._console.push(line)
-        self.write(buf.getvalue())
+        """Run a line as if typed (multi-line blocks: one line per call)."""
+        self.console.repl.handleCommand(line)

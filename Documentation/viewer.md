@@ -156,8 +156,28 @@ were loaded.
 * *Export Src to Workspace* / *Export Out to Workspace* put the source (`exp_src`) or the
   output traces (`exp_out`, a list) into the workspace. *Load Src from Workspace* makes
   `exp_src` the source. In place of MATLAB's base workspace, the workspace is a Python
-  namespace with its own console (*File > Workspace Console*). There `exp_src.y`,
-  `exp_src.ax.x`, `np` and `viewer` are available.
+  namespace with its own console (*File > Workspace Console*).
+
+### Workspace Console
+
+*File > Workspace Console* opens a Python console in a separate window. It is
+pyqtgraph's console, with multi-line input (`for` / `def` blocks), command history
+(Up / Down) that is kept between sessions in `kazan_console_history.pkl` next to the
+ini file, and an exception viewer. It runs inside the viewer, so it works on the live
+data:
+
+| Name | Meaning |
+|---|---|
+| `viewer` | the Kazan window: the plugin host API (`get_data`, `set_data`, `get`, `set`, ...) |
+| `src()`, `psrc()` | copies of the source and the processed source |
+| `out()` | copies of the output traces |
+| `show(d, ...)` | put `KzData` set(s) into the output |
+| `plugins()`, `active()` | the open plugin windows; the plugin that gets `file_update` |
+| `exp_src`, `exp_out` | data exported with *Export Src / Out to Workspace* |
+| `np`, `KzData`, `Struct`, `verify` | numpy and the Kazan data types |
+
+Example: `d = src(); d.y = d.y ** 2; show(d)`. Commands run in the viewer's GUI
+thread, so a long computation blocks the viewer until it finishes.
 
 ## Plugins
 

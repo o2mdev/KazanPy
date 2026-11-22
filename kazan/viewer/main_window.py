@@ -1715,7 +1715,8 @@ class KazanViewer(QMainWindow):
     def _menu_workspace(self, what: str):
         """MATLAB Export Src / Out to Workspace, Load Src from Workspace; the workspace is a
         Python namespace with its own console (File > Workspace Console)."""
-        con = console.WorkspaceConsole.instance()
+        con = console.WorkspaceConsole.instance(
+            history_file=self.ini.path.with_name('kazan_console_history.pkl'))
         console.WORKSPACE['viewer'] = self
         if what == 'export_src':
             console.assign('exp_src', self.src.copy())
